@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Inventário digital de ferramentas para mecânicos."
+    />
+    <meta name="theme-color" content="#0d2639" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Minha Oficina" />
+    <title>Minha Oficina | Inventário de ferramentas</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="auth-pending">
+    <section class="auth-screen" id="authScreen">
+      <div class="auth-visual">
+        <a class="brand auth-brand" href="/" aria-label="Minha Oficina">
+          <span class="brand-mark">MO</span>
+          <span>
+            <strong>Minha Oficina</strong>
+            <small>Inventário de ferramentas</small>
+          </span>
+        </a>
+        <div class="auth-pitch">
+          <span class="eyebrow eyebrow-light">SEU PATRIMÔNIO PROFISSIONAL</span>
+          <h1>Suas ferramentas organizadas, onde você estiver.</h1>
+          <p>Cadastre, fotografe e gere relatórios do seu inventário pelo celular ou computador.</p>
+          <ul>
+            <li>Inventário separado e protegido por conta</li>
+            <li>Instalação no celular como aplicativo</li>
+            <li>Relatórios prontos para salvar em PDF</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="auth-panel">
+        <div class="auth-card">
+          <div class="auth-tabs" role="tablist" aria-label="Acesso à conta">
+            <button class="auth-tab active" id="loginTab" type="button">Entrar</button>
+            <button class="auth-tab" id="registerTab" type="button">Criar conta</button>
+          </div>
+
+          <form class="auth-form active" id="loginForm">
+            <div>
+              <span class="eyebrow">BEM-VINDO DE VOLTA</span>
+              <h2>Acesse seu inventário</h2>
+              <p>Entre com os dados da sua conta.</p>
+            </div>
+            <label class="field">
+              <span>E-mail</span>
+              <input id="loginEmail" type="email" autocomplete="email" placeholder="voce@exemplo.com" required />
+            </label>
+            <label class="field">
+              <span>Senha</span>
+              <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Sua senha" required />
+            </label>
+            <p class="form-error" id="loginError"></p>
+            <button class="button button-primary auth-submit" type="submit">Entrar na minha conta</button>
+          </form>
+
+          <form class="auth-form" id="registerForm">
+            <div>
+              <span class="eyebrow">PRIMEIRO ACESSO</span>
+              <h2>Crie sua conta</h2>
+              <p>Seu inventário ficará separado dos demais usuários.</p>
+            </div>
+            <label class="field">
+              <span>Nome completo</span>
+              <input id="registerName" type="text" autocomplete="name" placeholder="Seu nome" required />
+            </label>
+            <label class="field">
+              <span>E-mail</span>
+              <input id="registerEmail" type="email" autocomplete="email" placeholder="voce@exemplo.com" required />
+            </label>
+            <label class="field">
+              <span>Senha</span>
+              <input id="registerPassword" type="password" autocomplete="new-password" minlength="8" placeholder="Mínimo de 8 caracteres" required />
+            </label>
+            <p class="form-error" id="registerError"></p>
+            <button class="button button-primary auth-submit" type="submit">Criar minha conta</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <div class="app-shell" id="appShell">
+      <aside class="sidebar">
+        <a class="brand" href="#" aria-label="Minha Oficina">
+          <span class="brand-mark">MO</span>
+          <span>
+            <strong>Minha Oficina</strong>
+            <small>Inventário de ferramentas</small>
+          </span>
+        </a>
+
+        <nav class="main-nav" aria-label="Navegação principal">
+          <button class="nav-item active" data-section="inventory">
+            <span class="nav-icon">▦</span>
+            Inventário
+          </button>
+          <button class="nav-item" data-section="profile">
+            <span class="nav-icon">◉</span>
+            Meus dados
+          </button>
+        </nav>
+
+        <div class="sidebar-card">
+          <span class="sidebar-card-icon">✓</span>
+          <strong>Inventário em dia</strong>
+          <p>Mantenha suas ferramentas registradas e o relatório atualizado.</p>
+          <button class="text-button" id="sidebarReportButton">Gerar relatório</button>
+        </div>
+
+        <button class="install-button" id="installButton" type="button" hidden>
+          <span>⇩</span>
+          Instalar aplicativo
+        </button>
+        <div class="account-card">
+          <span class="account-avatar" id="accountAvatar">M</span>
+          <span class="account-text">
+            <strong id="accountName">Mecânico</strong>
+            <small id="accountEmail"></small>
+          </span>
+          <button class="logout-button" id="logoutButton" type="button" title="Sair da conta">Sair</button>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <button class="mobile-menu" id="mobileMenu" aria-label="Abrir menu">☰</button>
+          <div class="topbar-title">
+            <span class="eyebrow">PAINEL DO MECÂNICO</span>
+            <h1 id="pageTitle">Inventário</h1>
+          </div>
+          <div class="topbar-actions">
+            <button class="button button-secondary" id="reportButton">
+              <span>▤</span>
+              Gerar relatório
+            </button>
+            <button class="button button-primary" id="addToolButton">
+              <span>＋</span>
+              Nova ferramenta
+            </button>
+          </div>
+        </header>
+
+        <section class="page-section active" id="inventorySection">
+          <div class="welcome-banner">
+            <div>
+              <span class="eyebrow eyebrow-light">SEU PATRIMÔNIO PROFISSIONAL</span>
+              <h2>Olá, <span id="welcomeName">mecânico</span>.</h2>
+              <p>Organize, encontre e comprove todas as ferramentas da sua oficina.</p>
+            </div>
+            <div class="banner-symbol" aria-hidden="true">🔧</div>
+          </div>
+
+          <div class="stats-grid">
+            <article class="stat-card">
+              <div class="stat-icon stat-icon-blue">▦</div>
+              <div>
+                <span>Ferramentas cadastradas</span>
+                <strong id="totalTools">0</strong>
+              </div>
+            </article>
+            <article class="stat-card">
+              <div class="stat-icon stat-icon-gold">R$</div>
+              <div>
+                <span>Valor registrado</span>
+                <strong id="totalValue">R$ 0,00</strong>
+              </div>
+            </article>
+            <article class="stat-card">
+              <div class="stat-icon stat-icon-green">＋</div>
+              <div>
+                <span>Adicionadas recentemente</span>
+                <strong id="recentTools">0</strong>
+              </div>
+            </article>
+          </div>
+
+          <div class="content-heading">
+            <div>
+              <h2>Minhas ferramentas</h2>
+              <p>Consulte e mantenha seu inventário atualizado.</p>
+            </div>
+            <div class="filters">
+              <label class="search-box">
+                <span>⌕</span>
+                <input
+                  id="searchInput"
+                  type="search"
+                  placeholder="Buscar ferramenta..."
+                  aria-label="Buscar ferramenta"
+                />
+              </label>
+              <select id="categoryFilter" aria-label="Filtrar por categoria">
+                <option value="">Todas as categorias</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="tools-grid" id="toolsGrid"></div>
+
+          <div class="empty-state" id="emptyState">
+            <div class="empty-illustration">＋</div>
+            <h3>Sua bancada digital começa aqui</h3>
+            <p>Cadastre sua primeira ferramenta para começar a montar o inventário.</p>
+            <button class="button button-primary" id="emptyAddButton">Cadastrar ferramenta</button>
+          </div>
+        </section>
+
+        <section class="page-section" id="profileSection">
+          <div class="profile-layout">
+            <div class="section-intro">
+              <span class="eyebrow">IDENTIFICAÇÃO</span>
+              <h2>Dados do mecânico</h2>
+              <p>Estas informações aparecerão no cabeçalho do seu relatório.</p>
+            </div>
+            <form class="profile-form card" id="profileForm">
+              <div class="form-grid">
+                <label class="field field-wide">
+                  <span>Nome completo</span>
+                  <input id="profileName" name="name" type="text" placeholder="Ex.: João da Silva" required />
+                </label>
+                <label class="field">
+                  <span>Especialidade</span>
+                  <input id="profileSpecialty" name="specialty" type="text" placeholder="Ex.: Mecânico automotivo" />
+                </label>
+                <label class="field">
+                  <span>Telefone</span>
+                  <input id="profilePhone" name="phone" type="tel" placeholder="(00) 00000-0000" />
+                </label>
+                <label class="field field-wide">
+                  <span>Oficina ou empresa</span>
+                  <input id="profileShop" name="shop" type="text" placeholder="Nome da oficina" />
+                </label>
+              </div>
+              <div class="form-footer">
+                <span id="profileSavedMessage"></span>
+                <button class="button button-primary" type="submit">Salvar meus dados</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="toolModal" aria-hidden="true">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="toolModalTitle">
+        <header class="modal-header">
+          <div>
+            <span class="eyebrow">INVENTÁRIO</span>
+            <h2 id="toolModalTitle">Nova ferramenta</h2>
+          </div>
+          <button class="icon-button" id="closeModalButton" aria-label="Fechar">×</button>
+        </header>
+
+        <form id="toolForm">
+          <input id="toolId" type="hidden" />
+          <div class="photo-picker">
+            <input id="toolPhoto" type="file" accept="image/*" hidden />
+            <button class="photo-preview" id="photoPreview" type="button">
+              <span class="photo-placeholder" id="photoPlaceholder">
+                <b>＋</b>
+                Adicionar foto
+              </span>
+              <img id="photoImage" alt="Prévia da ferramenta" />
+            </button>
+            <div>
+              <strong>Foto da ferramenta</strong>
+              <p>Uma boa foto ajuda na identificação e no relatório.</p>
+              <button class="text-button" id="removePhotoButton" type="button">Remover foto</button>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <label class="field field-wide">
+              <span>Nome da ferramenta *</span>
+              <input id="toolName" type="text" placeholder="Ex.: Parafusadeira de impacto" required />
+            </label>
+            <label class="field">
+              <span>Marca</span>
+              <input id="toolBrand" type="text" placeholder="Ex.: Bosch" />
+            </label>
+            <label class="field">
+              <span>Modelo</span>
+              <input id="toolModel" type="text" placeholder="Ex.: GDX 18V-200" />
+            </label>
+            <label class="field">
+              <span>Categoria *</span>
+              <input id="toolCategory" type="text" list="categoryOptions" placeholder="Ex.: Ferramenta elétrica" required />
+              <datalist id="categoryOptions">
+                <option value="Ferramenta manual"></option>
+                <option value="Ferramenta elétrica"></option>
+                <option value="Medição"></option>
+                <option value="Diagnóstico"></option>
+                <option value="Elevação"></option>
+                <option value="Organização"></option>
+                <option value="Outros"></option>
+              </datalist>
+            </label>
+            <label class="field">
+              <span>Data de aquisição *</span>
+              <input id="toolDate" type="date" required />
+            </label>
+            <label class="field">
+              <span>Valor pago</span>
+              <input id="toolPrice" type="number" min="0" step="0.01" placeholder="0,00" />
+            </label>
+            <label class="field">
+              <span>Número de série</span>
+              <input id="toolSerial" type="text" placeholder="Opcional" />
+            </label>
+            <label class="field field-wide">
+              <span>Observações</span>
+              <textarea id="toolNotes" rows="3" placeholder="Estado, acessórios, detalhes importantes..."></textarea>
+            </label>
+          </div>
+          <footer class="modal-footer">
+            <button class="button button-secondary" id="cancelModalButton" type="button">Cancelar</button>
+            <button class="button button-primary" type="submit">Salvar ferramenta</button>
+          </footer>
+        </form>
+      </section>
+    </div>
+
+    <section class="report" id="report">
+      <header class="report-header">
+        <div class="report-brand">
+          <span class="brand-mark">MO</span>
+          <div>
+            <strong>Minha Oficina</strong>
+            <small>Inventário profissional de ferramentas</small>
+          </div>
+        </div>
+        <div class="report-meta">
+          <strong>RELATÓRIO DE INVENTÁRIO</strong>
+          <span id="reportDate"></span>
+        </div>
+      </header>
+      <div class="report-owner" id="reportOwner"></div>
+      <div class="report-summary" id="reportSummary"></div>
+      <div class="report-tools" id="reportTools"></div>
+      <footer class="report-footer">
+        <span>Relatório gerado pelo Minha Oficina</span>
+        <span id="reportFooterDate"></span>
+      </footer>
+    </section>
+
+    <div class="toast" id="toast" role="status"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

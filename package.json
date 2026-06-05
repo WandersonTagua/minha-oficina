@@ -1,0 +1,13 @@
+{
+  "name": "minha-oficina",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PWA multiusuário de inventário de ferramentas para mecânicos",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check app.js"
+  }
+}
