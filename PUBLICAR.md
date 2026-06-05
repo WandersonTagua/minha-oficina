@@ -80,11 +80,19 @@ Arquivos que devem ir:
 
 ## 5. Usar disco persistente
 
-Este projeto já tem disco persistente configurado no `render.yaml`.
+Para testar de graça, o projeto pode usar `plan: free` e salvar dados em
+`/tmp/store.json`. Esse modo é temporário: contas e ferramentas podem sumir
+quando o Render reiniciar o serviço.
 
-Configuração atual:
+Para produção, volte para um plano pago com disco persistente.
+
+Configuração recomendada para produção:
 
 ```yaml
+plan: starter
+envVars:
+  - key: DATA_FILE
+    value: /var/data/store.json
 disk:
   name: minha-oficina-data
   mountPath: /var/data
@@ -97,9 +105,9 @@ E os dados do app ficam em:
 /var/data/store.json
 ```
 
-Importante: disco persistente normalmente exige plano pago. Não use plano sem
-disco para produção, porque contas e ferramentas podem ser perdidas quando o
-servidor reiniciar.
+Importante: disco persistente normalmente exige plano pago. Não use plano
+gratuito sem disco para produção, porque contas e ferramentas podem ser
+perdidas quando o servidor reiniciar.
 
 ## 6. Comprar domínio depois
 
