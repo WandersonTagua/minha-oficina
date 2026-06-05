@@ -84,6 +84,9 @@ Para testar de graça, o projeto pode usar `plan: free` e salvar dados em
 `/tmp/store.json`. Esse modo é temporário: contas e ferramentas podem sumir
 quando o Render reiniciar o serviço.
 
+O mesmo vale para vídeos enviados para o painel TV: no plano gratuito eles são
+úteis para teste, mas podem ser apagados quando o serviço reiniciar.
+
 Para produção, volte para um plano pago com disco persistente.
 
 Configuração recomendada para produção:

@@ -7,14 +7,19 @@ const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "127.0.0.1";
 const root = __dirname;
 const dataFile = process.env.DATA_FILE || path.join(root, "data", "store.json");
+const mediaDir = process.env.MEDIA_DIR || path.join(path.dirname(dataFile), "media");
 const sessions = new Map();
 const loginAttempts = new Map();
 
 const staticFiles = new Map([
   ["/", "index.html"],
+  ["/tv", "tv.html"],
+  ["/tv.html", "tv.html"],
   ["/index.html", "index.html"],
   ["/styles.css", "styles.css"],
   ["/app.js", "app.js"],
+  ["/tv.css", "tv.css"],
+  ["/tv.js", "tv.js"],
   ["/manifest.webmanifest", "manifest.webmanifest"],
   ["/service-worker.js", "service-worker.js"],
   ["/icon.svg", "icon.svg"],
@@ -29,22 +34,45 @@ const contentTypes = {
   ".webmanifest": "application/manifest+json; charset=utf-8",
   ".svg": "image/svg+xml; charset=utf-8",
   ".png": "image/png",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".ogv": "video/ogg",
 };
 
 ensureStore();
 
 function ensureStore() {
   fs.mkdirSync(path.dirname(dataFile), { recursive: true });
+  fs.mkdirSync(mediaDir, { recursive: true });
   if (!fs.existsSync(dataFile)) {
-    fs.writeFileSync(dataFile, JSON.stringify({ users: [] }, null, 2));
+    fs.writeFileSync(dataFile, JSON.stringify(createEmptyStore(), null, 2));
   }
+}
+
+function createEmptyStore() {
+  return {
+    users: [],
+    tv: {
+      mechanic: "",
+      queue: [],
+      notice: "Colaboradores: verifiquem todas as lâmpadas do veículo para evitar acidentes.",
+      highlight: "Promoção do dia: alinhamento por apenas R$44,99",
+      playlist: [],
+      updatedAt: new Date().toISOString(),
+    },
+  };
 }
 
 function readStore() {
   try {
-    return JSON.parse(fs.readFileSync(dataFile, "utf8"));
+    const store = JSON.parse(fs.readFileSync(dataFile, "utf8"));
+    store.users ||= [];
+    store.tv ||= createEmptyStore().tv;
+    store.tv.queue ||= [];
+    store.tv.playlist ||= [];
+    return store;
   } catch {
-    return { users: [] };
+    return createEmptyStore();
   }
 }
 
@@ -152,6 +180,24 @@ function readJsonBody(request) {
   });
 }
 
+function readBinaryBody(request, maxBytes = 120_000_000) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    request.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(new Error("BODY_TOO_LARGE"));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on("end", () => resolve(Buffer.concat(chunks)));
+    request.on("error", reject);
+  });
+}
+
 function requireUser(request, response) {
   const session = getSession(request);
   if (!session) {
@@ -198,7 +244,44 @@ function cleanTool(body, existing = {}) {
   };
 }
 
+function cleanTvSettings(body, existing = {}) {
+  const incomingPlaylist = Array.isArray(body.playlist) ? body.playlist : [];
+  const playlist = incomingPlaylist
+    .map((item) => ({
+      id: sanitizeText(item.id, 80) || crypto.randomUUID(),
+      type: item.type === "youtube" ? "youtube" : "video",
+      title: sanitizeText(item.title, 120),
+      url: sanitizeText(item.url, 1000),
+    }))
+    .filter((item) => item.url);
+
+  return {
+    mechanic: sanitizeText(body.mechanic, 100),
+    queue: Array.isArray(body.queue)
+      ? body.queue.map((name) => sanitizeText(name, 80)).filter(Boolean).slice(0, 20)
+      : [],
+    notice: sanitizeText(body.notice, 300),
+    highlight: sanitizeText(body.highlight, 180),
+    playlist,
+    updatedAt: new Date().toISOString(),
+    createdAt: existing.createdAt || new Date().toISOString(),
+  };
+}
+
+function extensionForContentType(contentType) {
+  if (contentType.includes("video/mp4")) return ".mp4";
+  if (contentType.includes("video/webm")) return ".webm";
+  if (contentType.includes("video/ogg")) return ".ogv";
+  return "";
+}
+
 async function handleApi(request, response, pathname) {
+  if (request.method === "GET" && pathname === "/api/tv") {
+    const store = readStore();
+    sendJson(response, 200, { tv: store.tv || createEmptyStore().tv });
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/api/auth/register") {
     if (isRateLimited(request)) {
       sendJson(response, 429, { error: "Muitas tentativas. Aguarde alguns minutos." });
@@ -269,6 +352,39 @@ async function handleApi(request, response, pathname) {
   const context = requireUser(request, response);
   if (!context) return;
 
+  if (request.method === "PUT" && pathname === "/api/tv") {
+    context.store.tv = cleanTvSettings(await readJsonBody(request), context.store.tv);
+    writeStore(context.store);
+    sendJson(response, 200, { tv: context.store.tv });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/tv/media") {
+    const contentType = String(request.headers["content-type"] || "");
+    if (!contentType.startsWith("video/")) {
+      sendJson(response, 400, { error: "Envie um arquivo de vídeo válido." });
+      return;
+    }
+    const extension = extensionForContentType(contentType);
+    if (!extension) {
+      sendJson(response, 400, { error: "Use vídeo MP4, WebM ou OGG." });
+      return;
+    }
+    const title = sanitizeText(new URL(request.url, `http://${request.headers.host}`).searchParams.get("title"), 120);
+    const id = crypto.randomUUID();
+    const fileName = `${id}${extension}`;
+    const filePath = path.join(mediaDir, fileName);
+    fs.writeFileSync(filePath, await readBinaryBody(request));
+    const media = {
+      id,
+      type: "video",
+      title: title || "Vídeo enviado",
+      url: `/media/${fileName}`,
+    };
+    sendJson(response, 201, { media });
+    return;
+  }
+
   if (request.method === "GET" && pathname === "/api/tools") {
     sendJson(response, 200, { tools: context.user.tools || [] });
     return;
@@ -331,6 +447,24 @@ async function handleApi(request, response, pathname) {
 }
 
 function serveStatic(response, pathname) {
+  if (pathname.startsWith("/media/")) {
+    const fileName = path.basename(pathname);
+    const filePath = path.join(mediaDir, fileName);
+    fs.readFile(filePath, (error, data) => {
+      if (error) {
+        sendJson(response, 404, { error: "Mídia não encontrada." });
+        return;
+      }
+      response.writeHead(200, {
+        "Content-Type": contentTypes[path.extname(filePath)] || "application/octet-stream",
+        "Cache-Control": "public, max-age=86400",
+        "X-Content-Type-Options": "nosniff",
+      });
+      response.end(data);
+    });
+    return;
+  }
+
   const fileName = staticFiles.get(pathname);
   if (!fileName) {
     sendJson(response, 404, { error: "Página não encontrada." });

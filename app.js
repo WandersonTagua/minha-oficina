@@ -7,6 +7,13 @@ const state = {
     phone: "",
     shop: "",
   },
+  tv: {
+    mechanic: "",
+    queue: [],
+    notice: "",
+    highlight: "",
+    playlist: [],
+  },
   currentPhoto: "",
   installPrompt: null,
 };
@@ -32,6 +39,7 @@ const elements = {
   pageTitle: document.querySelector("#pageTitle"),
   inventorySection: document.querySelector("#inventorySection"),
   profileSection: document.querySelector("#profileSection"),
+  tvSection: document.querySelector("#tvSection"),
   welcomeName: document.querySelector("#welcomeName"),
   totalTools: document.querySelector("#totalTools"),
   totalValue: document.querySelector("#totalValue"),
@@ -61,6 +69,18 @@ const elements = {
   profilePhone: document.querySelector("#profilePhone"),
   profileShop: document.querySelector("#profileShop"),
   profileSavedMessage: document.querySelector("#profileSavedMessage"),
+  tvForm: document.querySelector("#tvForm"),
+  tvMechanic: document.querySelector("#tvMechanic"),
+  tvQueue: document.querySelector("#tvQueue"),
+  tvNotice: document.querySelector("#tvNotice"),
+  tvHighlight: document.querySelector("#tvHighlight"),
+  tvSavedMessage: document.querySelector("#tvSavedMessage"),
+  openTvButton: document.querySelector("#openTvButton"),
+  youtubeUrl: document.querySelector("#youtubeUrl"),
+  addYoutubeButton: document.querySelector("#addYoutubeButton"),
+  localVideo: document.querySelector("#localVideo"),
+  uploadVideoButton: document.querySelector("#uploadVideoButton"),
+  playlistList: document.querySelector("#playlistList"),
   reportDate: document.querySelector("#reportDate"),
   reportFooterDate: document.querySelector("#reportFooterDate"),
   reportOwner: document.querySelector("#reportOwner"),
@@ -117,10 +137,16 @@ function switchAuthTab(tab) {
 
 async function loadApp() {
   try {
-    const [{ user }, { tools }] = await Promise.all([api("/api/auth/me"), api("/api/tools")]);
+    const [{ user }, { tools }, { tv }] = await Promise.all([
+      api("/api/auth/me"),
+      api("/api/tools"),
+      api("/api/tv"),
+    ]);
     state.tools = tools;
+    state.tv = tv;
     showAuthenticated(user);
     renderProfile();
+    renderTvPanel();
     renderAll();
   } catch {
     showAuth();
@@ -258,6 +284,40 @@ function renderAll() {
   renderStats();
   updateCategoryFilter();
   renderTools();
+}
+
+function renderTvPanel() {
+  elements.tvMechanic.value = state.tv.mechanic || "";
+  elements.tvQueue.value = (state.tv.queue || []).join("\n");
+  elements.tvNotice.value = state.tv.notice || "";
+  elements.tvHighlight.value = state.tv.highlight || "";
+  renderPlaylist();
+}
+
+function renderPlaylist() {
+  const items = state.tv.playlist || [];
+  if (!items.length) {
+    elements.playlistList.replaceChildren(createElement("p", "tool-card-subtitle", "Nenhum vídeo adicionado ao painel."));
+    return;
+  }
+
+  elements.playlistList.replaceChildren(
+    ...items.map((item) => {
+      const row = createElement("div", "playlist-item");
+      row.append(createElement("span", "playlist-type", item.type === "youtube" ? "YouTube" : "Vídeo"));
+      const info = document.createElement("div");
+      info.append(createElement("strong", "", item.title || "Mídia sem título"));
+      info.append(createElement("small", "", item.url));
+      const remove = createElement("button", "playlist-remove", "Remover");
+      remove.type = "button";
+      remove.addEventListener("click", () => {
+        state.tv.playlist = state.tv.playlist.filter((media) => media.id !== item.id);
+        renderPlaylist();
+      });
+      row.append(info, remove);
+      return row;
+    }),
+  );
 }
 
 function openToolModal(tool = null) {
@@ -399,6 +459,85 @@ async function submitProfile(event) {
   }
 }
 
+async function submitTvPanel(event) {
+  event.preventDefault();
+  state.tv = {
+    ...state.tv,
+    mechanic: elements.tvMechanic.value.trim(),
+    queue: elements.tvQueue.value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+    notice: elements.tvNotice.value.trim(),
+    highlight: elements.tvHighlight.value.trim(),
+    playlist: state.tv.playlist || [],
+  };
+
+  try {
+    const { tv } = await api("/api/tv", {
+      method: "PUT",
+      body: JSON.stringify(state.tv),
+    });
+    state.tv = tv;
+    renderTvPanel();
+    elements.tvSavedMessage.textContent = "Painel TV atualizado.";
+    setTimeout(() => (elements.tvSavedMessage.textContent = ""), 2600);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function addYoutubeMedia() {
+  const url = elements.youtubeUrl.value.trim();
+  if (!url) {
+    showToast("Informe o link do YouTube.");
+    return;
+  }
+  state.tv.playlist ||= [];
+  state.tv.playlist.push({
+    id: crypto.randomUUID(),
+    type: "youtube",
+    title: "Vídeo do YouTube",
+    url,
+  });
+  elements.youtubeUrl.value = "";
+  renderPlaylist();
+}
+
+async function uploadLocalVideo() {
+  const file = elements.localVideo.files[0];
+  if (!file) {
+    showToast("Selecione um vídeo do computador.");
+    return;
+  }
+  if (!file.type.startsWith("video/")) {
+    showToast("Selecione um arquivo de vídeo.");
+    return;
+  }
+
+  elements.uploadVideoButton.disabled = true;
+  elements.uploadVideoButton.textContent = "Enviando...";
+  try {
+    const response = await fetch(`/api/tv/media?title=${encodeURIComponent(file.name)}`, {
+      method: "POST",
+      headers: { "Content-Type": file.type },
+      body: file,
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || "Não foi possível enviar o vídeo.");
+    state.tv.playlist ||= [];
+    state.tv.playlist.push(body.media);
+    elements.localVideo.value = "";
+    renderPlaylist();
+    showToast("Vídeo adicionado ao painel.");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    elements.uploadVideoButton.disabled = false;
+    elements.uploadVideoButton.textContent = "Enviar vídeo";
+  }
+}
+
 function addReportField(container, label, value) {
   const field = document.createElement("div");
   field.append(createElement("strong", "", label));
@@ -472,10 +611,15 @@ function printReport() {
 }
 
 function showSection(sectionName) {
-  const isInventory = sectionName === "inventory";
-  elements.inventorySection.classList.toggle("active", isInventory);
-  elements.profileSection.classList.toggle("active", !isInventory);
-  elements.pageTitle.textContent = isInventory ? "Inventário" : "Meus dados";
+  const titles = {
+    inventory: "Inventário",
+    profile: "Meus dados",
+    tv: "Painel TV",
+  };
+  elements.inventorySection.classList.toggle("active", sectionName === "inventory");
+  elements.profileSection.classList.toggle("active", sectionName === "profile");
+  elements.tvSection.classList.toggle("active", sectionName === "tv");
+  elements.pageTitle.textContent = titles[sectionName] || "Inventário";
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.section === sectionName);
   });
@@ -581,12 +725,16 @@ elements.toolPhoto.addEventListener("change", async () => {
 });
 elements.toolForm.addEventListener("submit", submitTool);
 elements.profileForm.addEventListener("submit", submitProfile);
+elements.tvForm.addEventListener("submit", submitTvPanel);
 elements.loginForm.addEventListener("submit", submitLogin);
 elements.registerForm.addEventListener("submit", submitRegister);
 elements.loginTab.addEventListener("click", () => switchAuthTab("login"));
 elements.registerTab.addEventListener("click", () => switchAuthTab("register"));
 elements.logoutButton.addEventListener("click", logout);
 elements.installButton.addEventListener("click", installApp);
+elements.openTvButton.addEventListener("click", () => window.open("/tv", "_blank", "noopener"));
+elements.addYoutubeButton.addEventListener("click", addYoutubeMedia);
+elements.uploadVideoButton.addEventListener("click", uploadLocalVideo);
 elements.searchInput.addEventListener("input", renderTools);
 elements.categoryFilter.addEventListener("change", renderTools);
 document.addEventListener("keydown", (event) => {

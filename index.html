@@ -115,6 +115,10 @@
             <span class="nav-icon">◉</span>
             Meus dados
           </button>
+          <button class="nav-item" data-section="tv">
+            <span class="nav-icon">▣</span>
+            Painel TV
+          </button>
         </nav>
 
         <div class="sidebar-card">
@@ -251,6 +255,80 @@
               <div class="form-footer">
                 <span id="profileSavedMessage"></span>
                 <button class="button button-primary" type="submit">Salvar meus dados</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section class="page-section" id="tvSection">
+          <div class="profile-layout">
+            <div class="section-intro">
+              <span class="eyebrow">TELÃO DA OFICINA</span>
+              <h2>Painel para TV</h2>
+              <p>Configure a tela pública com vídeos, fila e avisos da oficina.</p>
+            </div>
+
+            <form class="profile-form card" id="tvForm">
+              <div class="tv-form-header">
+                <div>
+                  <h3>Conteúdo exibido na TV</h3>
+                  <p>Abra o painel em <a href="/tv" target="_blank" rel="noreferrer">/tv</a>.</p>
+                </div>
+                <button class="button button-secondary" id="openTvButton" type="button">Abrir TV</button>
+              </div>
+
+              <div class="form-grid">
+                <label class="field">
+                  <span>Mecânico da vez</span>
+                  <input id="tvMechanic" type="text" placeholder="Ex.: Wanderson Moreira" />
+                </label>
+                <label class="field">
+                  <span>Destaque / promoção</span>
+                  <input id="tvHighlight" type="text" placeholder="Ex.: Promoção do dia..." />
+                </label>
+                <label class="field field-wide">
+                  <span>Próximos na fila</span>
+                  <textarea id="tvQueue" rows="4" placeholder="Um nome por linha"></textarea>
+                </label>
+                <label class="field field-wide">
+                  <span>Aviso da faixa inferior</span>
+                  <textarea id="tvNotice" rows="3" placeholder="Mensagem que passa no rodapé da TV"></textarea>
+                </label>
+              </div>
+
+              <div class="tv-media-box">
+                <div class="section-intro compact">
+                  <span class="eyebrow">MÍDIAS</span>
+                  <h2>Vídeos do painel</h2>
+                  <p>Adicione vídeos do computador do gestor ou links do YouTube.</p>
+                </div>
+
+                <div class="tv-media-actions">
+                  <label class="field">
+                    <span>Link do YouTube</span>
+                    <input id="youtubeUrl" type="url" placeholder="https://www.youtube.com/watch?v=..." />
+                  </label>
+                  <button class="button button-secondary" id="addYoutubeButton" type="button">
+                    Adicionar YouTube
+                  </button>
+                </div>
+
+                <div class="tv-media-actions">
+                  <label class="field">
+                    <span>Vídeo do computador</span>
+                    <input id="localVideo" type="file" accept="video/mp4,video/webm,video/ogg" />
+                  </label>
+                  <button class="button button-secondary" id="uploadVideoButton" type="button">
+                    Enviar vídeo
+                  </button>
+                </div>
+
+                <div class="playlist-list" id="playlistList"></div>
+              </div>
+
+              <div class="form-footer">
+                <span id="tvSavedMessage"></span>
+                <button class="button button-primary" type="submit">Salvar painel TV</button>
               </div>
             </form>
           </div>

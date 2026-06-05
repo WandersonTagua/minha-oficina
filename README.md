@@ -23,6 +23,8 @@ Depois, abra `http://localhost:4173`.
 - Busca e filtro por categoria
 - Dados do mecânico
 - Relatório formatado para imprimir ou salvar em PDF
+- Painel público para TV com fila, aviso e vídeos
+- Upload de vídeos do computador do gestor e links do YouTube
 - PWA instalável no celular e computador
 - Cache da interface para abertura básica sem conexão
 
@@ -50,6 +52,8 @@ inventários quando o servidor reiniciar.
 
 ## Próximos passos para produção
 
+- Trocar o modo gratuito por disco persistente ou banco de dados
+- Armazenamento de vídeos/fotos em serviço próprio
 - Recuperação de senha por e-mail
 - Confirmação de e-mail
 - Banco de dados gerenciado, como PostgreSQL
