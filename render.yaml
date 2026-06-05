@@ -13,3 +13,5 @@ services:
         value: 0.0.0.0
       - key: DATA_FILE
         value: /tmp/store.json
+      - key: OWNER_SETUP_KEY
+        value: trocar-este-codigo-no-render

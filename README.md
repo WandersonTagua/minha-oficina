@@ -13,6 +13,15 @@ node server.js
 
 Depois, abra `http://localhost:4173`.
 
+Para criar o primeiro dono da plataforma, configure a variável:
+
+```powershell
+$env:OWNER_SETUP_KEY="um-codigo-secreto"
+node server.js
+```
+
+No cadastro inicial, informe esse mesmo código no campo **Código do dono**.
+
 ## Recursos
 
 - Cadastro e login de usuários
@@ -51,6 +60,10 @@ O arquivo `render.yaml` configura um serviço web Node.js com disco persistente.
 
 O plano configurado usa disco persistente, necessário para não perder contas e
 inventários quando o servidor reiniciar.
+
+Antes de criar o primeiro usuário em produção, altere a variável
+`OWNER_SETUP_KEY` no Render para um código secreto seu. Sem esse código, ninguém
+consegue virar dono da plataforma.
 
 ## Próximos passos para produção
 

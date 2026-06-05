@@ -8,6 +8,7 @@ const host = process.env.HOST || "127.0.0.1";
 const root = __dirname;
 const dataFile = process.env.DATA_FILE || path.join(root, "data", "store.json");
 const mediaDir = process.env.MEDIA_DIR || path.join(path.dirname(dataFile), "media");
+const ownerSetupKey = process.env.OWNER_SETUP_KEY || "";
 const sessions = new Map();
 const loginAttempts = new Map();
 
@@ -442,6 +443,18 @@ async function handleApi(request, response, pathname) {
     if (store.users.length > 0) {
       sendJson(response, 403, {
         error: "Novas contas devem ser criadas pelo dono ou gestor.",
+      });
+      return;
+    }
+    if (ownerSetupKey && String(body.ownerSetupKey || "") !== ownerSetupKey) {
+      sendJson(response, 403, {
+        error: "Código de criação do dono inválido.",
+      });
+      return;
+    }
+    if (!ownerSetupKey) {
+      sendJson(response, 403, {
+        error: "Configure OWNER_SETUP_KEY no servidor antes de criar o dono.",
       });
       return;
     }

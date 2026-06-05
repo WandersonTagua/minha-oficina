@@ -35,6 +35,7 @@ const elements = {
   registerName: document.querySelector("#registerName"),
   registerEmail: document.querySelector("#registerEmail"),
   registerPassword: document.querySelector("#registerPassword"),
+  ownerSetupKey: document.querySelector("#ownerSetupKey"),
   loginError: document.querySelector("#loginError"),
   registerError: document.querySelector("#registerError"),
   installButton: document.querySelector("#installButton"),
@@ -846,6 +847,7 @@ async function submitRegister(event) {
         name: elements.registerName.value,
         email: elements.registerEmail.value,
         password: elements.registerPassword.value,
+        ownerSetupKey: elements.ownerSetupKey.value,
       }),
     });
     state.tools = [];

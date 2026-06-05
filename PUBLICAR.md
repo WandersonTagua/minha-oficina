@@ -78,6 +78,15 @@ Arquivos que devem ir:
 5. O Render vai detectar o arquivo `render.yaml`.
 6. Confirme a criação do serviço.
 
+Depois que o serviço for criado, abra **Environment** no Render e troque:
+
+```text
+OWNER_SETUP_KEY=trocar-este-codigo-no-render
+```
+
+Use um código seu, por exemplo uma frase com letras, números e símbolos. Esse
+código será exigido somente para criar o primeiro dono da plataforma.
+
 ## 5. Usar disco persistente
 
 Para testar de graça, o projeto pode usar `plan: free` e salvar dados em
@@ -99,6 +108,8 @@ plan: starter
 envVars:
   - key: DATA_FILE
     value: /var/data/store.json
+  - key: OWNER_SETUP_KEY
+    value: seu-codigo-secreto
 disk:
   name: minha-oficina-data
   mountPath: /var/data
