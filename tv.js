@@ -125,7 +125,7 @@ function advanceMedia(delay) {
 
 async function loadTvSettings() {
   try {
-    const response = await fetch("/api/tv", { cache: "no-store" });
+    const response = await fetch(`/api/tv${window.location.search}`, { cache: "no-store" });
     const { tv } = await response.json();
     const previousPlaylist = JSON.stringify(tvState.settings?.playlist || []);
     const nextPlaylist = JSON.stringify(tv.playlist || []);

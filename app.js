@@ -16,6 +16,11 @@ const state = {
     queueSource: "manual",
     playlist: [],
   },
+  team: [],
+  attendance: {
+    queue: [],
+    mine: null,
+  },
   currentPhoto: "",
   installPrompt: null,
 };
@@ -42,6 +47,8 @@ const elements = {
   inventorySection: document.querySelector("#inventorySection"),
   profileSection: document.querySelector("#profileSection"),
   tvSection: document.querySelector("#tvSection"),
+  teamSection: document.querySelector("#teamSection"),
+  attendanceSection: document.querySelector("#attendanceSection"),
   welcomeName: document.querySelector("#welcomeName"),
   totalTools: document.querySelector("#totalTools"),
   totalValue: document.querySelector("#totalValue"),
@@ -85,6 +92,25 @@ const elements = {
   localVideo: document.querySelector("#localVideo"),
   uploadVideoButton: document.querySelector("#uploadVideoButton"),
   playlistList: document.querySelector("#playlistList"),
+  teamForm: document.querySelector("#teamForm"),
+  teamName: document.querySelector("#teamName"),
+  teamEmail: document.querySelector("#teamEmail"),
+  teamPassword: document.querySelector("#teamPassword"),
+  organizationField: document.querySelector("#organizationField"),
+  organizationName: document.querySelector("#organizationName"),
+  teamTitle: document.querySelector("#teamTitle"),
+  teamSubtitle: document.querySelector("#teamSubtitle"),
+  teamFormTitle: document.querySelector("#teamFormTitle"),
+  teamFormHelp: document.querySelector("#teamFormHelp"),
+  teamSubmitButton: document.querySelector("#teamSubmitButton"),
+  teamSavedMessage: document.querySelector("#teamSavedMessage"),
+  teamListTitle: document.querySelector("#teamListTitle"),
+  teamList: document.querySelector("#teamList"),
+  managerAttendanceList: document.querySelector("#managerAttendanceList"),
+  attendanceStatusText: document.querySelector("#attendanceStatusText"),
+  checkInButton: document.querySelector("#checkInButton"),
+  checkOutButton: document.querySelector("#checkOutButton"),
+  employeeAttendanceList: document.querySelector("#employeeAttendanceList"),
   reportDate: document.querySelector("#reportDate"),
   reportFooterDate: document.querySelector("#reportFooterDate"),
   reportOwner: document.querySelector("#reportOwner"),
@@ -141,20 +167,44 @@ function switchAuthTab(tab) {
 
 async function loadApp() {
   try {
-    const [{ user }, { tools }, { tv }] = await Promise.all([
-      api("/api/auth/me"),
-      api("/api/tools"),
-      api("/api/tv"),
-    ]);
-    state.tools = tools;
-    state.tv = tv;
+    const { user } = await api("/api/auth/me");
     showAuthenticated(user);
+    await refreshRoleData();
     renderProfile();
-    renderTvPanel();
     renderAll();
   } catch {
     showAuth();
   }
+}
+
+async function refreshRoleData() {
+  setupRoleUi();
+  if (state.user.role === "employee") {
+    const attendance = await api("/api/attendance");
+    state.attendance = attendance;
+    state.tools = [];
+    renderAttendance();
+    showSection("attendance");
+    return;
+  }
+
+  const tvPath = state.user.organizationSlug
+    ? `/api/tv?org=${encodeURIComponent(state.user.organizationSlug)}`
+    : "/api/tv";
+  const [{ tools }, { tv }, team, attendance] = await Promise.all([
+    api("/api/tools"),
+    api(tvPath),
+    api("/api/team"),
+    api("/api/attendance"),
+  ]);
+  state.tools = tools;
+  state.tv = tv;
+  state.team = team.users || [];
+  state.attendance = attendance;
+  renderTvPanel();
+  renderTeam();
+  renderAttendance();
+  if (state.user.role === "owner") showSection("team");
 }
 
 function formatCurrency(value) {
@@ -324,6 +374,89 @@ function renderPlaylist() {
       return row;
     }),
   );
+}
+
+function setupRoleUi() {
+  const role = state.user?.role || "employee";
+  document.querySelectorAll("[data-section]").forEach((button) => {
+    const section = button.dataset.section;
+    const managerSections = ["inventory", "profile", "tv", "team"];
+    const employeeSections = ["attendance"];
+    const ownerSections = ["team", "profile"];
+    const visible =
+      (role === "owner" && ownerSections.includes(section)) ||
+      (role === "manager" && managerSections.includes(section)) ||
+      (role === "employee" && employeeSections.includes(section));
+    button.hidden = !visible;
+  });
+
+  elements.organizationField.hidden = role !== "owner";
+  elements.teamTitle.textContent = role === "owner" ? "Gestores/clientes" : "Colaboradores e fila";
+  elements.teamSubtitle.textContent =
+    role === "owner"
+      ? "Cadastre os gestores das oficinas que usarão o sistema."
+      : "Cadastre colaboradores e acompanhe a ordem de chegada.";
+  elements.teamFormTitle.textContent = role === "owner" ? "Cadastrar gestor" : "Cadastrar colaborador";
+  elements.teamFormHelp.textContent =
+    role === "owner"
+      ? "Este gestor poderá cadastrar os próprios colaboradores."
+      : "O colaborador usará o celular para marcar presença.";
+  elements.teamListTitle.textContent = role === "owner" ? "Gestores cadastrados" : "Colaboradores cadastrados";
+  elements.teamSubmitButton.textContent = role === "owner" ? "Cadastrar gestor" : "Cadastrar colaborador";
+  document.querySelector("#addToolButton").hidden = role !== "manager";
+  document.querySelector("#reportButton").hidden = role !== "manager";
+  document.querySelector("#sidebarReportButton").hidden = role !== "manager";
+  document.querySelector(".sidebar-card").hidden = role !== "manager";
+}
+
+function renderTeam() {
+  if (!elements.teamList) return;
+  if (!state.team.length) {
+    elements.teamList.replaceChildren(createElement("p", "tool-card-subtitle", "Nenhum usuário cadastrado ainda."));
+    return;
+  }
+  elements.teamList.replaceChildren(
+    ...state.team.map((user) => {
+      const row = createElement("div", "team-row");
+      const avatar = createElement("span", "account-avatar", user.name.charAt(0).toLocaleUpperCase("pt-BR"));
+      const info = document.createElement("div");
+      info.append(createElement("strong", "", user.name));
+      info.append(createElement("small", "", `${user.email}${user.organizationName ? ` · ${user.organizationName}` : ""}`));
+      const role = createElement("span", "playlist-type", user.role === "manager" ? "Gestor" : "Colaborador");
+      row.append(avatar, info, role);
+      return row;
+    }),
+  );
+}
+
+function renderAttendanceList(container) {
+  const queue = state.attendance.queue || [];
+  if (!queue.length) {
+    container.replaceChildren(createElement("p", "tool-card-subtitle", "Ninguém marcou presença ainda."));
+    return;
+  }
+  container.replaceChildren(
+    ...queue.map((entry, index) => {
+      const row = createElement("div", "attendance-row");
+      row.append(createElement("span", "attendance-position", String(index + 1)));
+      const info = document.createElement("div");
+      info.append(createElement("strong", "", entry.name));
+      info.append(createElement("small", "", `Chegou às ${new Date(entry.checkedInAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`));
+      row.append(info);
+      return row;
+    }),
+  );
+}
+
+function renderAttendance() {
+  renderAttendanceList(elements.managerAttendanceList);
+  renderAttendanceList(elements.employeeAttendanceList);
+  const mine = state.attendance.mine;
+  elements.attendanceStatusText.textContent = mine
+    ? "Você já está na fila. Aguarde sua vez."
+    : "Entre na fila quando chegar à oficina.";
+  elements.checkInButton.hidden = Boolean(mine);
+  elements.checkOutButton.hidden = !mine;
 }
 
 function openToolModal(tool = null) {
@@ -623,15 +756,63 @@ function showSection(sectionName) {
     inventory: "Inventário",
     profile: "Meus dados",
     tv: "Painel TV",
+    team: state.user?.role === "owner" ? "Gestores/clientes" : "Equipe/Fila",
+    attendance: "Presença",
   };
   elements.inventorySection.classList.toggle("active", sectionName === "inventory");
   elements.profileSection.classList.toggle("active", sectionName === "profile");
   elements.tvSection.classList.toggle("active", sectionName === "tv");
+  elements.teamSection.classList.toggle("active", sectionName === "team");
+  elements.attendanceSection.classList.toggle("active", sectionName === "attendance");
   elements.pageTitle.textContent = titles[sectionName] || "Inventário";
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.section === sectionName);
   });
   elements.sidebar.classList.remove("open");
+}
+
+async function submitTeam(event) {
+  event.preventDefault();
+  try {
+    const body = {
+      name: elements.teamName.value.trim(),
+      email: elements.teamEmail.value.trim(),
+      password: elements.teamPassword.value,
+      organizationName: elements.organizationName.value.trim(),
+    };
+    const { user } = await api("/api/team", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    state.team.push(user);
+    elements.teamForm.reset();
+    renderTeam();
+    elements.teamSavedMessage.textContent =
+      state.user.role === "owner" ? "Gestor cadastrado." : "Colaborador cadastrado.";
+    setTimeout(() => (elements.teamSavedMessage.textContent = ""), 2600);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function checkIn() {
+  try {
+    state.attendance = await api("/api/attendance/check-in", { method: "POST" });
+    renderAttendance();
+    showToast("Presença marcada. Você entrou na fila.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function checkOut() {
+  try {
+    state.attendance = await api("/api/attendance/check-out", { method: "POST" });
+    renderAttendance();
+    showToast("Você saiu da fila.");
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
 async function submitLogin(event) {
@@ -645,9 +826,8 @@ async function submitLogin(event) {
         password: elements.loginPassword.value,
       }),
     });
-    const { tools } = await api("/api/tools");
-    state.tools = tools;
     showAuthenticated(user);
+    await refreshRoleData();
     renderProfile();
     renderAll();
     elements.loginForm.reset();
@@ -670,6 +850,7 @@ async function submitRegister(event) {
     });
     state.tools = [];
     showAuthenticated(user);
+    await refreshRoleData();
     renderProfile();
     renderAll();
     elements.registerForm.reset();
@@ -734,15 +915,21 @@ elements.toolPhoto.addEventListener("change", async () => {
 elements.toolForm.addEventListener("submit", submitTool);
 elements.profileForm.addEventListener("submit", submitProfile);
 elements.tvForm.addEventListener("submit", submitTvPanel);
+elements.teamForm.addEventListener("submit", submitTeam);
 elements.loginForm.addEventListener("submit", submitLogin);
 elements.registerForm.addEventListener("submit", submitRegister);
 elements.loginTab.addEventListener("click", () => switchAuthTab("login"));
 elements.registerTab.addEventListener("click", () => switchAuthTab("register"));
 elements.logoutButton.addEventListener("click", logout);
 elements.installButton.addEventListener("click", installApp);
-elements.openTvButton.addEventListener("click", () => window.open("/tv", "_blank", "noopener"));
+elements.openTvButton.addEventListener("click", () => {
+  const suffix = state.user?.organizationSlug ? `?org=${encodeURIComponent(state.user.organizationSlug)}` : "";
+  window.open(`/tv${suffix}`, "_blank", "noopener");
+});
 elements.addYoutubeButton.addEventListener("click", addYoutubeMedia);
 elements.uploadVideoButton.addEventListener("click", uploadLocalVideo);
+elements.checkInButton.addEventListener("click", checkIn);
+elements.checkOutButton.addEventListener("click", checkOut);
 elements.searchInput.addEventListener("input", renderTools);
 elements.categoryFilter.addEventListener("change", renderTools);
 document.addEventListener("keydown", (event) => {

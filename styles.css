@@ -1014,6 +1014,102 @@ select {
   font-weight: 800;
 }
 
+.team-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 17px;
+  margin-top: 18px;
+}
+
+.team-card {
+  padding: 18px;
+}
+
+.team-card h3 {
+  margin: 0 0 13px;
+  font-family: "Manrope", sans-serif;
+  font-size: 15px;
+}
+
+.team-list,
+.attendance-list {
+  display: grid;
+  gap: 9px;
+}
+
+.team-row,
+.attendance-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px;
+  border: 1px solid var(--slate-200);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.attendance-row {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.team-row strong,
+.team-row small,
+.attendance-row strong,
+.attendance-row small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-row strong,
+.attendance-row strong {
+  font-size: 11px;
+}
+
+.team-row small,
+.attendance-row small {
+  margin-top: 2px;
+  color: var(--slate-500);
+  font-size: 9px;
+}
+
+.attendance-position {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--navy-950);
+  background: var(--gold-500);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.attendance-mobile {
+  max-width: 520px;
+  margin: 25px auto;
+}
+
+.attendance-mobile h2 {
+  margin: 5px 0 6px;
+  font-family: "Manrope", sans-serif;
+  font-size: 26px;
+}
+
+.attendance-mobile > p {
+  margin: 0 0 18px;
+  color: var(--slate-500);
+  font-size: 12px;
+}
+
+.attendance-button {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1387,7 +1483,9 @@ select {
   .tv-form-header,
   .tv-media-actions,
   .checkbox-field,
-  .playlist-item {
+  .playlist-item,
+  .team-panels,
+  .team-row {
     grid-template-columns: 1fr;
   }
 

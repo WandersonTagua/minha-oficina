@@ -119,6 +119,14 @@
             <span class="nav-icon">▣</span>
             Painel TV
           </button>
+          <button class="nav-item" data-section="team">
+            <span class="nav-icon">☷</span>
+            Equipe/Fila
+          </button>
+          <button class="nav-item" data-section="attendance">
+            <span class="nav-icon">◷</span>
+            Presença
+          </button>
         </nav>
 
         <div class="sidebar-card">
@@ -298,6 +306,7 @@
                   <span>Origem da fila</span>
                   <select id="tvQueueSource">
                     <option value="manual">Manual neste painel</option>
+                    <option value="attendance">Automática por presença</option>
                     <option value="services" disabled>Automática por serviços (em breve)</option>
                   </select>
                 </label>
@@ -343,6 +352,78 @@
                 <button class="button button-primary" type="submit">Salvar painel TV</button>
               </div>
             </form>
+          </div>
+        </section>
+
+        <section class="page-section" id="teamSection">
+          <div class="profile-layout">
+            <div class="section-intro">
+              <span class="eyebrow">GESTÃO DA OFICINA</span>
+              <h2 id="teamTitle">Equipe e fila</h2>
+              <p id="teamSubtitle">Cadastre usuários e acompanhe a ordem de chegada.</p>
+            </div>
+
+            <form class="profile-form card" id="teamForm">
+              <div class="tv-form-header">
+                <div>
+                  <h3 id="teamFormTitle">Novo usuário</h3>
+                  <p id="teamFormHelp">O acesso será criado com e-mail e senha.</p>
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <label class="field">
+                  <span>Nome</span>
+                  <input id="teamName" type="text" placeholder="Nome completo" required />
+                </label>
+                <label class="field">
+                  <span>E-mail</span>
+                  <input id="teamEmail" type="email" placeholder="email@oficina.com" required />
+                </label>
+                <label class="field">
+                  <span>Senha inicial</span>
+                  <input id="teamPassword" type="password" minlength="8" placeholder="Mínimo de 8 caracteres" required />
+                </label>
+                <label class="field" id="organizationField">
+                  <span>Nome da oficina</span>
+                  <input id="organizationName" type="text" placeholder="Ex.: Oficina do Cliente" />
+                </label>
+              </div>
+
+              <div class="form-footer">
+                <span id="teamSavedMessage"></span>
+                <button class="button button-primary" type="submit" id="teamSubmitButton">Cadastrar</button>
+              </div>
+            </form>
+
+            <div class="team-panels">
+              <article class="card team-card">
+                <h3 id="teamListTitle">Usuários cadastrados</h3>
+                <div class="team-list" id="teamList"></div>
+              </article>
+              <article class="card team-card">
+                <h3>Fila de presença</h3>
+                <div class="attendance-list" id="managerAttendanceList"></div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="page-section" id="attendanceSection">
+          <div class="attendance-mobile">
+            <span class="eyebrow">PONTO DA OFICINA</span>
+            <h2>Marcar presença</h2>
+            <p id="attendanceStatusText">Entre na fila quando chegar à oficina.</p>
+            <button class="button button-primary attendance-button" id="checkInButton" type="button">
+              Marcar presença e entrar na fila
+            </button>
+            <button class="button button-secondary attendance-button" id="checkOutButton" type="button">
+              Sair da fila
+            </button>
+            <div class="card team-card">
+              <h3>Fila atual</h3>
+              <div class="attendance-list" id="employeeAttendanceList"></div>
+            </div>
           </div>
         </section>
       </main>

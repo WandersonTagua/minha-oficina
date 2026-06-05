@@ -52,6 +52,8 @@ function ensureStore() {
 function createEmptyStore() {
   return {
     users: [],
+    organizations: [],
+    attendance: [],
     tv: {
       mechanic: "",
       queue: [],
@@ -69,13 +71,32 @@ function readStore() {
   try {
     const store = JSON.parse(fs.readFileSync(dataFile, "utf8"));
     store.users ||= [];
+    store.organizations ||= [];
+    store.attendance ||= [];
     store.tv ||= createEmptyStore().tv;
     store.tv.queue ||= [];
     store.tv.playlist ||= [];
+    migrateStore(store);
     return store;
   } catch {
     return createEmptyStore();
   }
+}
+
+function migrateStore(store) {
+  let changed = false;
+  store.users.forEach((user, index) => {
+    if (!user.role) {
+      user.role = index === 0 ? "owner" : "manager";
+      changed = true;
+    }
+    if (user.role === "manager" && !user.organizationId) {
+      const organization = createOrganization(store, user.profile?.shop || user.name || "Oficina");
+      user.organizationId = organization.id;
+      changed = true;
+    }
+  });
+  if (changed) writeStore(store);
 }
 
 function writeStore(store) {
@@ -92,6 +113,45 @@ function sanitizeText(value, maxLength = 200) {
   return String(value || "").trim().slice(0, maxLength);
 }
 
+function slugify(value) {
+  const base = sanitizeText(value, 80)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return base || `oficina-${crypto.randomBytes(3).toString("hex")}`;
+}
+
+function createOrganization(store, name) {
+  const id = crypto.randomUUID();
+  const baseSlug = slugify(name);
+  let slug = baseSlug;
+  let count = 2;
+  while ((store.organizations || []).some((item) => item.slug === slug)) {
+    slug = `${baseSlug}-${count}`;
+    count += 1;
+  }
+  const organization = {
+    id,
+    name: sanitizeText(name, 120) || "Oficina",
+    slug,
+    tv: createEmptyStore().tv,
+    createdAt: new Date().toISOString(),
+  };
+  store.organizations ||= [];
+  store.organizations.push(organization);
+  return organization;
+}
+
+function organizationName(store, organizationId) {
+  return (store.organizations || []).find((item) => item.id === organizationId)?.name || "";
+}
+
+function organizationSlug(store, organizationId) {
+  return (store.organizations || []).find((item) => item.id === organizationId)?.slug || "";
+}
+
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
   const hash = crypto.scryptSync(password, salt, 64).toString("hex");
   return { salt, hash };
@@ -101,6 +161,67 @@ function passwordMatches(password, user) {
   const candidate = Buffer.from(hashPassword(password, user.passwordSalt).hash, "hex");
   const saved = Buffer.from(user.passwordHash, "hex");
   return candidate.length === saved.length && crypto.timingSafeEqual(candidate, saved);
+}
+
+function createUser({ name, email, password, role, organizationId = "", profile = {} }) {
+  const passwordData = hashPassword(password);
+  return {
+    id: crypto.randomUUID(),
+    name,
+    email,
+    role,
+    organizationId,
+    passwordSalt: passwordData.salt,
+    passwordHash: passwordData.hash,
+    profile: {
+      name,
+      specialty: profile.specialty || "",
+      phone: profile.phone || "",
+      shop: profile.shop || "",
+    },
+    tools: [],
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function canManageTeam(user) {
+  return user.role === "owner" || user.role === "manager";
+}
+
+function ensureTeamAccess(user, response) {
+  if (!canManageTeam(user)) {
+    sendJson(response, 403, { error: "Acesso restrito ao gestor." });
+    return false;
+  }
+  return true;
+}
+
+function attendanceQueue(store, organizationId) {
+  return (store.attendance || [])
+    .filter((entry) => entry.active && (!organizationId || entry.organizationId === organizationId))
+    .sort((a, b) => new Date(a.checkedInAt) - new Date(b.checkedInAt));
+}
+
+function publicAttendance(entry) {
+  return {
+    userId: entry.userId,
+    name: entry.name,
+    organizationId: entry.organizationId,
+    checkedInAt: entry.checkedInAt,
+  };
+}
+
+function publicTeamUser(user, store) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    organizationId: user.organizationId || "",
+    organizationName: organizationName(store, user.organizationId),
+    organizationSlug: organizationSlug(store, user.organizationId),
+    createdAt: user.createdAt,
+  };
 }
 
 function parseCookies(request) {
@@ -147,11 +268,15 @@ function clearSession(response, request) {
   );
 }
 
-function publicUser(user) {
+function publicUser(user, store = readStore()) {
   return {
     id: user.id,
     name: user.name,
     email: user.email,
+    role: user.role || "manager",
+    organizationId: user.organizationId || "",
+    organizationName: organizationName(store, user.organizationId),
+    organizationSlug: organizationSlug(store, user.organizationId),
     profile: user.profile || {},
   };
 }
@@ -265,7 +390,7 @@ function cleanTvSettings(body, existing = {}) {
     notice: sanitizeText(body.notice, 300),
     highlight: sanitizeText(body.highlight, 180),
     audioMuted: body.audioMuted !== false,
-    queueSource: body.queueSource === "services" ? "services" : "manual",
+    queueSource: ["attendance", "services"].includes(body.queueSource) ? body.queueSource : "manual",
     playlist,
     updatedAt: new Date().toISOString(),
     createdAt: existing.createdAt || new Date().toISOString(),
@@ -282,7 +407,15 @@ function extensionForContentType(contentType) {
 async function handleApi(request, response, pathname) {
   if (request.method === "GET" && pathname === "/api/tv") {
     const store = readStore();
-    sendJson(response, 200, { tv: store.tv || createEmptyStore().tv });
+    const params = new URL(request.url, `http://${request.headers.host}`).searchParams;
+    const organization = (store.organizations || []).find((item) => item.slug === params.get("org"));
+    const tv = { ...(organization?.tv || store.tv || createEmptyStore().tv) };
+    if (tv.queueSource === "attendance") {
+      const queue = attendanceQueue(store, organization?.id).map(publicAttendance);
+      tv.mechanic = queue[0]?.name || tv.mechanic;
+      tv.queue = queue.slice(1).map((entry) => entry.name);
+    }
+    sendJson(response, 200, { tv });
     return;
   }
 
@@ -306,21 +439,23 @@ async function handleApi(request, response, pathname) {
       sendJson(response, 409, { error: "Já existe uma conta com este e-mail." });
       return;
     }
-    const passwordData = hashPassword(password);
-    const user = {
-      id: crypto.randomUUID(),
+    if (store.users.length > 0) {
+      sendJson(response, 403, {
+        error: "Novas contas devem ser criadas pelo dono ou gestor.",
+      });
+      return;
+    }
+    const user = createUser({
       name,
       email,
-      passwordSalt: passwordData.salt,
-      passwordHash: passwordData.hash,
-      profile: { name, specialty: "", phone: "", shop: "" },
-      tools: [],
-      createdAt: new Date().toISOString(),
-    };
+      password,
+      role: "owner",
+      profile: { shop: "Minha plataforma" },
+    });
     store.users.push(user);
     writeStore(store);
     createSession(response, user.id, request);
-    sendJson(response, 201, { user: publicUser(user) });
+    sendJson(response, 201, { user: publicUser(user, store) });
     return;
   }
 
@@ -337,7 +472,7 @@ async function handleApi(request, response, pathname) {
       return;
     }
     createSession(response, user.id, request);
-    sendJson(response, 200, { user: publicUser(user) });
+    sendJson(response, 200, { user: publicUser(user, store) });
     return;
   }
 
@@ -349,21 +484,133 @@ async function handleApi(request, response, pathname) {
 
   if (request.method === "GET" && pathname === "/api/auth/me") {
     const context = requireUser(request, response);
-    if (context) sendJson(response, 200, { user: publicUser(context.user) });
+    if (context) sendJson(response, 200, { user: publicUser(context.user, context.store) });
     return;
   }
 
   const context = requireUser(request, response);
   if (!context) return;
 
-  if (request.method === "PUT" && pathname === "/api/tv") {
-    context.store.tv = cleanTvSettings(await readJsonBody(request), context.store.tv);
+  if (request.method === "GET" && pathname === "/api/team") {
+    if (!ensureTeamAccess(context.user, response)) return;
+    const users = context.user.role === "owner"
+      ? context.store.users.filter((user) => user.role === "manager")
+      : context.store.users.filter(
+          (user) => user.role === "employee" && user.organizationId === context.user.organizationId,
+        );
+    sendJson(response, 200, {
+      role: context.user.role,
+      users: users.map((user) => publicTeamUser(user, context.store)),
+      organizations: context.user.role === "owner" ? context.store.organizations : [],
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/team") {
+    if (!ensureTeamAccess(context.user, response)) return;
+    const body = await readJsonBody(request);
+    const name = sanitizeText(body.name, 100);
+    const email = normalizeEmail(body.email);
+    const password = String(body.password || "");
+    if (name.length < 2 || !email.includes("@") || password.length < 8) {
+      sendJson(response, 400, {
+        error: "Informe nome, e-mail válido e senha com pelo menos 8 caracteres.",
+      });
+      return;
+    }
+    if (context.store.users.some((user) => user.email === email)) {
+      sendJson(response, 409, { error: "Já existe uma conta com este e-mail." });
+      return;
+    }
+
+    let role = "employee";
+    let organizationId = context.user.organizationId;
+    let profile = {};
+    if (context.user.role === "owner") {
+      role = "manager";
+      const organizationName = sanitizeText(body.organizationName, 120) || `${name} Oficina`;
+      const organization = createOrganization(context.store, organizationName);
+      organizationId = organization.id;
+      profile = { shop: organization.name };
+    }
+
+    const user = createUser({
+      name,
+      email,
+      password,
+      role,
+      organizationId,
+      profile,
+    });
+    context.store.users.push(user);
     writeStore(context.store);
-    sendJson(response, 200, { tv: context.store.tv });
+    sendJson(response, 201, { user: publicTeamUser(user, context.store) });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/attendance") {
+    const organizationId = context.user.role === "owner" ? "" : context.user.organizationId;
+    const queue = attendanceQueue(context.store, organizationId).map(publicAttendance);
+    const mine = queue.find((entry) => entry.userId === context.user.id) || null;
+    sendJson(response, 200, { queue, mine });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/attendance/check-in") {
+    if (!context.user.organizationId) {
+      sendJson(response, 400, { error: "Usuário sem oficina vinculada." });
+      return;
+    }
+    context.store.attendance ||= [];
+    const existing = context.store.attendance.find(
+      (entry) => entry.userId === context.user.id && entry.active,
+    );
+    if (!existing) {
+      context.store.attendance.push({
+        userId: context.user.id,
+        name: context.user.name,
+        organizationId: context.user.organizationId,
+        checkedInAt: new Date().toISOString(),
+        active: true,
+      });
+      writeStore(context.store);
+    }
+    sendJson(response, 200, {
+      queue: attendanceQueue(context.store, context.user.organizationId).map(publicAttendance),
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/attendance/check-out") {
+    let changed = false;
+    context.store.attendance = (context.store.attendance || []).map((entry) => {
+      if (entry.userId !== context.user.id || !entry.active) return entry;
+      changed = true;
+      return { ...entry, active: false, checkedOutAt: new Date().toISOString() };
+    });
+    if (changed) writeStore(context.store);
+    sendJson(response, 200, {
+      queue: attendanceQueue(context.store, context.user.organizationId).map(publicAttendance),
+    });
+    return;
+  }
+
+  if (request.method === "PUT" && pathname === "/api/tv") {
+    if (!ensureTeamAccess(context.user, response)) return;
+    const settings = cleanTvSettings(await readJsonBody(request), context.store.tv);
+    if (context.user.role === "manager" && context.user.organizationId) {
+      const organization = context.store.organizations.find((item) => item.id === context.user.organizationId);
+      if (organization) organization.tv = settings;
+    } else {
+      context.store.tv = settings;
+    }
+    writeStore(context.store);
+    sendJson(response, 200, { tv: settings });
     return;
   }
 
   if (request.method === "POST" && pathname === "/api/tv/media") {
+    if (!ensureTeamAccess(context.user, response)) return;
     const contentType = String(request.headers["content-type"] || "");
     if (!contentType.startsWith("video/")) {
       sendJson(response, 400, { error: "Envie um arquivo de vídeo válido." });
