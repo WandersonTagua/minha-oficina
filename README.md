@@ -25,6 +25,8 @@ Depois, abra `http://localhost:4173`.
 - Relatório formatado para imprimir ou salvar em PDF
 - Painel público para TV com fila, aviso e vídeos
 - Upload de vídeos do computador do gestor e links do YouTube
+- Controle para reproduzir vídeos com som ou mudo
+- Botão de tela cheia no painel da TV
 - PWA instalável no celular e computador
 - Cache da interface para abertura básica sem conexão
 

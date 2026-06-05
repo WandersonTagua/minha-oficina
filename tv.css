@@ -24,7 +24,7 @@ body {
 }
 
 .tv-shell {
-  height: calc(100vh - 46px);
+  height: calc(100vh - 62px);
   display: grid;
   grid-template-columns: minmax(0, 1fr) 35vw;
 }
@@ -42,6 +42,24 @@ body {
   display: block;
   border: 0;
   object-fit: cover;
+}
+
+.fullscreen-button {
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  z-index: 5;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  color: var(--white);
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.fullscreen-button:hover {
+  background: rgba(0, 0, 0, 0.8);
 }
 
 .media-empty {
@@ -207,14 +225,15 @@ body {
 }
 
 .ticker {
-  height: 46px;
+  height: 62px;
   display: flex;
   align-items: center;
   overflow: hidden;
   color: var(--yellow);
   background: #000;
   border-top: 2px solid #1e1e1e;
-  font-size: clamp(16px, 1.4vw, 24px);
+  padding: 0 0 3px;
+  font-size: clamp(18px, 1.65vw, 28px);
   font-weight: 900;
   white-space: nowrap;
 }

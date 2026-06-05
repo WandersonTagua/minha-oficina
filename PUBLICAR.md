@@ -87,6 +87,9 @@ quando o Render reiniciar o serviço.
 O mesmo vale para vídeos enviados para o painel TV: no plano gratuito eles são
 úteis para teste, mas podem ser apagados quando o serviço reiniciar.
 
+Alguns navegadores de TV bloqueiam reprodução automática com som. Se isso
+acontecer, deixe a opção **Reproduzir vídeos sem som** marcada no Painel TV.
+
 Para produção, volte para um plano pago com disco persistente.
 
 Configuração recomendada para produção:

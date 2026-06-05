@@ -12,7 +12,15 @@ const tvElements = {
   queueEmpty: document.querySelector("#queueEmpty"),
   noticeText: document.querySelector("#noticeText"),
   highlightCard: document.querySelector("#highlightCard"),
+  fullscreenButton: document.querySelector("#fullscreenButton"),
 };
+
+function toDisplayName(value) {
+  return String(value || "")
+    .trim()
+    .toLocaleLowerCase("pt-BR")
+    .replace(/(^|\s|[-'])\p{L}/gu, (letter) => letter.toLocaleUpperCase("pt-BR"));
+}
 
 function getYoutubeId(url) {
   try {
@@ -29,14 +37,15 @@ function getYoutubeId(url) {
   return "";
 }
 
-function youtubeEmbedUrl(url) {
+function youtubeEmbedUrl(url, muted = true) {
   const id = getYoutubeId(url);
   if (!id) return "";
-  return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&playsinline=1&loop=1&playlist=${id}`;
+  const muteValue = muted ? 1 : 0;
+  return `https://www.youtube.com/embed/${id}?autoplay=1&mute=${muteValue}&controls=0&rel=0&modestbranding=1&playsinline=1&loop=1&playlist=${id}`;
 }
 
 function renderText(settings) {
-  tvElements.currentMechanic.textContent = settings.mechanic || "Aguardando fila";
+  tvElements.currentMechanic.textContent = toDisplayName(settings.mechanic) || "Aguardando fila";
   tvElements.noticeText.textContent = settings.notice || "Bem-vindo à Minha Oficina.";
   tvElements.highlightCard.textContent = settings.highlight || "Painel da oficina em operação";
   tvElements.queueList.replaceChildren();
@@ -44,14 +53,14 @@ function renderText(settings) {
   const queue = Array.isArray(settings.queue) ? settings.queue.filter(Boolean) : [];
   queue.forEach((name) => {
     const item = document.createElement("li");
-    item.textContent = name;
+    item.textContent = toDisplayName(name);
     tvElements.queueList.append(item);
   });
   tvElements.queueEmpty.style.display = queue.length ? "none" : "block";
 }
 
 function showEmptyMedia() {
-  tvElements.mediaStage.replaceChildren(tvElements.mediaEmpty);
+  tvElements.mediaStage.replaceChildren(tvElements.fullscreenButton, tvElements.mediaEmpty);
 }
 
 function renderCurrentMedia() {
@@ -63,10 +72,10 @@ function renderCurrentMedia() {
   }
 
   const item = playlist[tvState.playlistIndex % playlist.length];
-  tvElements.mediaStage.replaceChildren();
+  tvElements.mediaStage.replaceChildren(tvElements.fullscreenButton);
 
   if (item.type === "youtube") {
-    const src = youtubeEmbedUrl(item.url);
+    const src = youtubeEmbedUrl(item.url, tvState.settings?.audioMuted !== false);
     if (!src) {
       advanceMedia(1000);
       return;
@@ -84,13 +93,21 @@ function renderCurrentMedia() {
   const video = document.createElement("video");
   video.src = item.url;
   video.autoplay = true;
-  video.muted = true;
+  video.muted = tvState.settings?.audioMuted !== false;
   video.playsInline = true;
   video.controls = false;
   video.addEventListener("ended", () => advanceMedia(200));
   video.addEventListener("error", () => advanceMedia(1000));
   tvElements.mediaStage.append(video);
   video.play().catch(() => advanceMedia(8000));
+}
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+    return;
+  }
+  document.documentElement.requestFullscreen?.();
 }
 
 function advanceMedia(delay) {
@@ -125,3 +142,4 @@ async function loadTvSettings() {
 
 loadTvSettings();
 setInterval(loadTvSettings, 10_000);
+tvElements.fullscreenButton.addEventListener("click", toggleFullscreen);

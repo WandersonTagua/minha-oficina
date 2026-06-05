@@ -12,6 +12,8 @@ const state = {
     queue: [],
     notice: "",
     highlight: "",
+    audioMuted: true,
+    queueSource: "manual",
     playlist: [],
   },
   currentPhoto: "",
@@ -74,6 +76,8 @@ const elements = {
   tvQueue: document.querySelector("#tvQueue"),
   tvNotice: document.querySelector("#tvNotice"),
   tvHighlight: document.querySelector("#tvHighlight"),
+  tvAudioMuted: document.querySelector("#tvAudioMuted"),
+  tvQueueSource: document.querySelector("#tvQueueSource"),
   tvSavedMessage: document.querySelector("#tvSavedMessage"),
   openTvButton: document.querySelector("#openTvButton"),
   youtubeUrl: document.querySelector("#youtubeUrl"),
@@ -291,6 +295,8 @@ function renderTvPanel() {
   elements.tvQueue.value = (state.tv.queue || []).join("\n");
   elements.tvNotice.value = state.tv.notice || "";
   elements.tvHighlight.value = state.tv.highlight || "";
+  elements.tvAudioMuted.checked = state.tv.audioMuted !== false;
+  elements.tvQueueSource.value = state.tv.queueSource || "manual";
   renderPlaylist();
 }
 
@@ -470,6 +476,8 @@ async function submitTvPanel(event) {
       .filter(Boolean),
     notice: elements.tvNotice.value.trim(),
     highlight: elements.tvHighlight.value.trim(),
+    audioMuted: elements.tvAudioMuted.checked,
+    queueSource: elements.tvQueueSource.value,
     playlist: state.tv.playlist || [],
   };
 
