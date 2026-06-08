@@ -2,6 +2,11 @@ const state = {
   user: null,
   tools: [],
   mechanicTools: [],
+  services: {
+    availableMechanics: [],
+    active: [],
+    mine: [],
+  },
   profile: {
     name: "",
     specialty: "",
@@ -24,6 +29,7 @@ const state = {
   },
   currentPhoto: "",
   installPrompt: null,
+  servicesPollTimer: null,
 };
 
 const elements = {
@@ -46,6 +52,7 @@ const elements = {
   accountAvatar: document.querySelector("#accountAvatar"),
   sidebar: document.querySelector(".sidebar"),
   pageTitle: document.querySelector("#pageTitle"),
+  homeSection: document.querySelector("#homeSection"),
   inventorySection: document.querySelector("#inventorySection"),
   profileSection: document.querySelector("#profileSection"),
   tvSection: document.querySelector("#tvSection"),
@@ -117,6 +124,13 @@ const elements = {
   checkInButton: document.querySelector("#checkInButton"),
   checkOutButton: document.querySelector("#checkOutButton"),
   employeeAttendanceList: document.querySelector("#employeeAttendanceList"),
+  availableMechanicsList: document.querySelector("#availableMechanicsList"),
+  activeServicesList: document.querySelector("#activeServicesList"),
+  dispatchServiceForm: document.querySelector("#dispatchServiceForm"),
+  dispatchMechanic: document.querySelector("#dispatchMechanic"),
+  dispatchTitle: document.querySelector("#dispatchTitle"),
+  dispatchNotes: document.querySelector("#dispatchNotes"),
+  employeeServicesList: document.querySelector("#employeeServicesList"),
   reportDate: document.querySelector("#reportDate"),
   reportFooterDate: document.querySelector("#reportFooterDate"),
   reportOwner: document.querySelector("#reportOwner"),
@@ -142,6 +156,8 @@ function showAuth(tab = "login") {
   state.user = null;
   state.tools = [];
   state.mechanicTools = [];
+  state.services = { availableMechanics: [], active: [], mine: [] };
+  stopServicesPolling();
   document.body.classList.remove("authenticated");
   document.body.classList.add("auth-pending");
   switchAuthTab(tab);
@@ -187,36 +203,53 @@ async function loadApp() {
 async function refreshRoleData() {
   setupRoleUi();
   if (state.user.role === "employee") {
-    const [{ tools }, attendance] = await Promise.all([
+    const [{ tools }, attendance, services] = await Promise.all([
       api("/api/tools"),
       api("/api/attendance"),
+      api("/api/services"),
     ]);
     state.tools = tools;
     state.mechanicTools = [];
     state.attendance = attendance;
+    state.services = {
+      availableMechanics: [],
+      active: [],
+      mine: services.mine || [],
+    };
     renderAttendance();
+    renderServices();
     showSection("inventory");
+    startServicesPolling();
     return;
   }
 
   const tvPath = state.user.organizationSlug
     ? `/api/tv?org=${encodeURIComponent(state.user.organizationSlug)}`
     : "/api/tv";
-  const [{ tools, mechanicTools = [] }, { tv }, team, attendance] = await Promise.all([
+  const [{ tools, mechanicTools = [] }, { tv }, team, attendance, services] = await Promise.all([
     api("/api/tools"),
     api(tvPath),
     api("/api/team"),
     api("/api/attendance"),
+    api("/api/services"),
   ]);
   state.tools = tools;
   state.mechanicTools = mechanicTools;
   state.tv = tv;
   state.team = team.users || [];
   state.attendance = attendance;
+  state.services = {
+    availableMechanics: services.availableMechanics || [],
+    active: services.active || [],
+    mine: services.mine || [],
+  };
   renderTvPanel();
   renderTeam();
   renderAttendance();
+  renderServices();
   if (state.user.role === "owner") showSection("team");
+  if (state.user.role === "manager") showSection("home");
+  startServicesPolling();
 }
 
 function formatCurrency(value) {
@@ -439,6 +472,7 @@ function renderAll() {
   renderStats();
   updateCategoryFilter();
   renderTools();
+  renderServices();
 }
 
 function renderTvPanel() {
@@ -481,7 +515,7 @@ function setupRoleUi() {
   const role = state.user?.role || "employee";
   document.querySelectorAll("[data-section]").forEach((button) => {
     const section = button.dataset.section;
-    const managerSections = ["inventory", "profile", "tv", "team"];
+    const managerSections = ["home", "inventory", "profile", "tv", "team"];
     const employeeSections = ["inventory", "attendance"];
     const ownerSections = ["team", "profile"];
     const visible =
@@ -561,6 +595,158 @@ function renderAttendance() {
   elements.checkInButton.classList.toggle("button-secondary", Boolean(mine));
   elements.checkInButton.hidden = false;
   elements.checkOutButton.hidden = true;
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  return new Date(value).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function serviceStatusLabel(status) {
+  const labels = {
+    pending: "Aguardando aceite",
+    running: "Em execução",
+    rejected: "Rejeitado",
+    finished: "Finalizado",
+  };
+  return labels[status] || status;
+}
+
+function renderServices() {
+  renderAvailableMechanics();
+  renderActiveServices();
+  renderEmployeeServices();
+}
+
+function renderAvailableMechanics() {
+  if (!elements.availableMechanicsList) return;
+  const queue = state.services.availableMechanics || [];
+  elements.dispatchMechanic.replaceChildren(new Option("Selecione pela ordem da fila", ""));
+  queue.forEach((mechanic, index) => {
+    elements.dispatchMechanic.append(new Option(`${index + 1}. ${mechanic.name}`, mechanic.userId));
+  });
+
+  if (!queue.length) {
+    elements.availableMechanicsList.replaceChildren(
+      createElement("p", "tool-card-subtitle", "Nenhum mecânico disponível na fila agora."),
+    );
+    return;
+  }
+
+  elements.availableMechanicsList.replaceChildren(
+    ...queue.map((mechanic, index) => {
+      const row = createElement("div", "attendance-row");
+      row.append(createElement("span", "attendance-position", String(index + 1)));
+      const info = document.createElement("div");
+      info.append(createElement("strong", "", mechanic.name));
+      info.append(
+        createElement(
+          "small",
+          "",
+          `Chegou às ${new Date(mechanic.checkedInAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`,
+        ),
+      );
+      row.append(info);
+      return row;
+    }),
+  );
+}
+
+function createServiceSummary(service) {
+  const item = createElement("article", "service-item");
+  const top = createElement("div", "service-item-top");
+  const title = document.createElement("div");
+  title.append(createElement("strong", "", service.title));
+  title.append(createElement("small", "", `${service.mechanicName} · ${formatDateTime(service.createdAt)}`));
+  top.append(title, createElement("span", `service-status ${service.status}`, serviceStatusLabel(service.status)));
+  item.append(top);
+  if (service.notes) item.append(createElement("p", "", service.notes));
+  if (service.plate || service.mileage) {
+    item.append(createElement("small", "service-meta", `Placa ${service.plate || "-"} · Km ${service.mileage || "-"}`));
+  }
+  return item;
+}
+
+function renderActiveServices() {
+  if (!elements.activeServicesList) return;
+  const services = state.services.active || [];
+  if (!services.length) {
+    elements.activeServicesList.replaceChildren(
+      createElement("p", "tool-card-subtitle", "Nenhum serviço em execução no momento."),
+    );
+    return;
+  }
+  elements.activeServicesList.replaceChildren(...services.map(createServiceSummary));
+}
+
+function createPendingServiceCard(service) {
+  const card = createServiceSummary(service);
+  card.classList.add("service-pending-card");
+  const form = createElement("form", "service-response-form");
+  form.dataset.serviceId = service.id;
+  form.innerHTML = `
+    <label class="field">
+      <span>Placa do veículo</span>
+      <input name="plate" type="text" placeholder="ABC1D23" required />
+    </label>
+    <label class="field">
+      <span>Quilometragem</span>
+      <input name="mileage" type="number" min="0" placeholder="Ex.: 85420" required />
+    </label>
+    <label class="field">
+      <span>Foto do painel em funcionamento</span>
+      <input name="dashboardPhoto" type="file" accept="image/*" required />
+    </label>
+    <label class="field">
+      <span>Motivo da rejeição</span>
+      <textarea name="rejectionReason" rows="3" placeholder="Obrigatório se rejeitar"></textarea>
+    </label>
+    <div class="service-actions">
+      <button class="button button-primary" type="submit">Aceitar serviço</button>
+      <button class="button button-secondary" type="button" data-reject-service>Rejeitar</button>
+    </div>
+  `;
+  form.addEventListener("submit", (event) => acceptService(event, service.id));
+  form.querySelector("[data-reject-service]").addEventListener("click", () => rejectService(form, service.id));
+  card.append(form);
+  return card;
+}
+
+function createRunningServiceCard(service) {
+  const card = createServiceSummary(service);
+  if (service.dashboardPhoto) {
+    const image = document.createElement("img");
+    image.className = "service-photo";
+    image.src = service.dashboardPhoto;
+    image.alt = `Painel do veículo ${service.plate}`;
+    card.append(image);
+  }
+  const finishButton = createElement("button", "button button-primary", "Marcar serviço como terminado");
+  finishButton.type = "button";
+  finishButton.addEventListener("click", () => finishService(service.id));
+  card.append(finishButton);
+  return card;
+}
+
+function renderEmployeeServices() {
+  if (!elements.employeeServicesList) return;
+  const services = state.services.mine || [];
+  if (!services.length) {
+    elements.employeeServicesList.replaceChildren(
+      createElement("p", "tool-card-subtitle", "Nenhum serviço enviado para você agora."),
+    );
+    return;
+  }
+  elements.employeeServicesList.replaceChildren(
+    ...services.map((service) =>
+      service.status === "pending" ? createPendingServiceCard(service) : createRunningServiceCard(service),
+    ),
+  );
 }
 
 function openToolModal(tool = null) {
@@ -857,12 +1043,14 @@ function printReport() {
 
 function showSection(sectionName) {
   const titles = {
+    home: "Início",
     inventory: "Inventário",
     profile: "Meus dados",
     tv: "Painel TV",
     team: state.user?.role === "owner" ? "Gestores/clientes" : "Equipe/Fila",
     attendance: "Presença",
   };
+  elements.homeSection.classList.toggle("active", sectionName === "home");
   elements.inventorySection.classList.toggle("active", sectionName === "inventory");
   elements.profileSection.classList.toggle("active", sectionName === "profile");
   elements.tvSection.classList.toggle("active", sectionName === "tv");
@@ -899,10 +1087,68 @@ async function submitTeam(event) {
   }
 }
 
+async function refreshServices() {
+  if (!state.user?.organizationId) return;
+  try {
+    const previousPending = new Set((state.services.mine || []).filter((service) => service.status === "pending").map((service) => service.id));
+    const services = await api("/api/services");
+    state.services = {
+      availableMechanics: services.availableMechanics || [],
+      active: services.active || [],
+      mine: services.mine || [],
+    };
+    renderServices();
+    const hasNewPending = state.user.role === "employee" && (state.services.mine || []).some(
+      (service) => service.status === "pending" && !previousPending.has(service.id),
+    );
+    if (hasNewPending) showToast("Novo serviço recebido.");
+  } catch {
+    stopServicesPolling();
+  }
+}
+
+function startServicesPolling() {
+  stopServicesPolling();
+  if (!state.user || state.user.role === "owner") return;
+  state.servicesPollTimer = window.setInterval(refreshServices, 15000);
+}
+
+function stopServicesPolling() {
+  if (state.servicesPollTimer) {
+    window.clearInterval(state.servicesPollTimer);
+    state.servicesPollTimer = null;
+  }
+}
+
+async function submitDispatchService(event) {
+  event.preventDefault();
+  try {
+    const services = await api("/api/services", {
+      method: "POST",
+      body: JSON.stringify({
+        mechanicId: elements.dispatchMechanic.value,
+        title: elements.dispatchTitle.value.trim(),
+        notes: elements.dispatchNotes.value.trim(),
+      }),
+    });
+    state.services = {
+      availableMechanics: services.availableMechanics || [],
+      active: services.active || [],
+      mine: [],
+    };
+    elements.dispatchServiceForm.reset();
+    renderServices();
+    showToast("Serviço enviado para o mecânico.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 async function checkIn() {
   try {
     state.attendance = await api("/api/attendance/check-in", { method: "POST" });
     renderAttendance();
+    await refreshServices();
     showToast("Presença marcada. Você entrou na fila.");
   } catch (error) {
     showToast(error.message);
@@ -913,6 +1159,7 @@ async function checkOut() {
   try {
     state.attendance = await api("/api/attendance/check-out", { method: "POST" });
     renderAttendance();
+    await refreshServices();
     showToast("Você saiu da fila.");
   } catch (error) {
     showToast(error.message);
@@ -925,6 +1172,81 @@ async function toggleAttendance() {
     return;
   }
   await checkIn();
+}
+
+async function acceptService(event, serviceId) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const file = form.elements.dashboardPhoto.files[0];
+  if (!file) {
+    showToast("Envie a foto do painel em funcionamento.");
+    return;
+  }
+  try {
+    const dashboardPhoto = await compressImage(file);
+    const services = await api(`/api/services/${serviceId}/accept`, {
+      method: "POST",
+      body: JSON.stringify({
+        plate: form.elements.plate.value.trim(),
+        mileage: form.elements.mileage.value.trim(),
+        dashboardPhoto,
+      }),
+    });
+    state.services = {
+      availableMechanics: [],
+      active: [],
+      mine: services.mine || [],
+    };
+    state.attendance = await api("/api/attendance");
+    renderAttendance();
+    renderServices();
+    showToast("Serviço aceito.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function rejectService(form, serviceId) {
+  const rejectionReason = form.elements.rejectionReason.value.trim();
+  if (rejectionReason.length < 3) {
+    showToast("Descreva o motivo da rejeição.");
+    form.elements.rejectionReason.focus();
+    return;
+  }
+  try {
+    const services = await api(`/api/services/${serviceId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ rejectionReason }),
+    });
+    state.services = {
+      availableMechanics: [],
+      active: [],
+      mine: services.mine || [],
+    };
+    state.attendance = await api("/api/attendance");
+    renderAttendance();
+    renderServices();
+    showToast("Serviço rejeitado. Você voltou para o fim da fila.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function finishService(serviceId) {
+  try {
+    const services = await api(`/api/services/${serviceId}/finish`, { method: "POST" });
+    state.services = {
+      availableMechanics: [],
+      active: [],
+      mine: services.mine || [],
+    };
+    state.attendance = await api("/api/attendance");
+    renderAttendance();
+    renderServices();
+    showToast("Serviço finalizado. Você voltou para a fila.");
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
 async function submitLogin(event) {
@@ -1029,6 +1351,7 @@ elements.toolForm.addEventListener("submit", submitTool);
 elements.profileForm.addEventListener("submit", submitProfile);
 elements.tvForm.addEventListener("submit", submitTvPanel);
 elements.teamForm.addEventListener("submit", submitTeam);
+elements.dispatchServiceForm.addEventListener("submit", submitDispatchService);
 elements.loginForm.addEventListener("submit", submitLogin);
 elements.registerForm.addEventListener("submit", submitRegister);
 elements.loginTab.addEventListener("click", () => switchAuthTab("login"));

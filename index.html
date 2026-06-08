@@ -111,7 +111,11 @@
         </a>
 
         <nav class="main-nav" aria-label="Navegação principal">
-          <button class="nav-item active" data-section="inventory">
+          <button class="nav-item active" data-section="home">
+            <span class="nav-icon">⌂</span>
+            Início
+          </button>
+          <button class="nav-item" data-section="inventory">
             <span class="nav-icon">▦</span>
             Inventário
           </button>
@@ -173,7 +177,68 @@
           </div>
         </header>
 
-        <section class="page-section active" id="inventorySection">
+        <section class="page-section active" id="homeSection">
+          <div class="profile-layout">
+            <div class="section-intro">
+              <span class="eyebrow">DESPACHO DA OFICINA</span>
+              <h2>Início e despacho de serviço</h2>
+              <p>Acompanhe mecânicos disponíveis, serviços em execução e envie novos serviços.</p>
+            </div>
+
+            <div class="dispatch-grid">
+              <article class="card dispatch-card">
+                <div class="dispatch-card-header">
+                  <span class="stat-icon stat-icon-green">✓</span>
+                  <div>
+                    <h3>Mecânicos disponíveis</h3>
+                    <p>Ordem atual de chegada.</p>
+                  </div>
+                </div>
+                <div class="attendance-list" id="availableMechanicsList"></div>
+              </article>
+
+              <article class="card dispatch-card">
+                <div class="dispatch-card-header">
+                  <span class="stat-icon stat-icon-blue">▶</span>
+                  <div>
+                    <h3>Serviços em execução</h3>
+                    <p>Serviços pendentes ou aceitos agora.</p>
+                  </div>
+                </div>
+                <div class="service-list" id="activeServicesList"></div>
+              </article>
+
+              <article class="card dispatch-card dispatch-form-card">
+                <div class="dispatch-card-header">
+                  <span class="stat-icon stat-icon-gold">OS</span>
+                  <div>
+                    <h3>Despachar serviço</h3>
+                    <p>Escolha o próximo mecânico disponível.</p>
+                  </div>
+                </div>
+                <form id="dispatchServiceForm" class="dispatch-form">
+                  <label class="field">
+                    <span>Mecânico</span>
+                    <select id="dispatchMechanic" required>
+                      <option value="">Selecione pela ordem da fila</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Serviço</span>
+                    <input id="dispatchTitle" type="text" placeholder="Ex.: Diagnóstico de injeção" required />
+                  </label>
+                  <label class="field field-wide">
+                    <span>Observações</span>
+                    <textarea id="dispatchNotes" rows="3" placeholder="Detalhes enviados ao mecânico"></textarea>
+                  </label>
+                  <button class="button button-primary" type="submit">Enviar para o mecânico</button>
+                </form>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="page-section" id="inventorySection">
           <div class="welcome-banner">
             <div>
               <span class="eyebrow eyebrow-light">SEU PATRIMÔNIO PROFISSIONAL</span>
@@ -437,6 +502,10 @@
             <div class="card team-card">
               <h3>Fila atual</h3>
               <div class="attendance-list" id="employeeAttendanceList"></div>
+            </div>
+            <div class="card team-card service-inbox-card">
+              <h3>Serviços recebidos</h3>
+              <div class="service-list" id="employeeServicesList"></div>
             </div>
           </div>
         </section>

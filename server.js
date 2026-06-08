@@ -55,6 +55,7 @@ function createEmptyStore() {
     users: [],
     organizations: [],
     attendance: [],
+    services: [],
     tv: {
       mechanic: "",
       queue: [],
@@ -74,6 +75,7 @@ function readStore() {
     store.users ||= [];
     store.organizations ||= [];
     store.attendance ||= [];
+    store.services ||= [];
     store.tv ||= createEmptyStore().tv;
     store.tv.queue ||= [];
     store.tv.playlist ||= [];
@@ -206,6 +208,28 @@ function attendanceQueue(store, organizationId) {
     .sort((a, b) => new Date(a.checkedInAt) - new Date(b.checkedInAt));
 }
 
+function busyMechanicIds(store, organizationId) {
+  return new Set(
+    (store.services || [])
+      .filter(
+        (service) =>
+          service.organizationId === organizationId &&
+          ["pending", "running"].includes(service.status),
+      )
+      .map((service) => service.mechanicId),
+  );
+}
+
+function availableAttendanceQueue(store, organizationId) {
+  const busy = busyMechanicIds(store, organizationId);
+  return attendanceQueue(store, organizationId).filter((entry) => !busy.has(entry.userId));
+}
+
+function moveMechanicToEndOfQueue(store, userId) {
+  const entry = (store.attendance || []).find((item) => item.userId === userId && item.active);
+  if (entry) entry.checkedInAt = new Date().toISOString();
+}
+
 function publicAttendance(entry) {
   return {
     userId: entry.userId,
@@ -213,6 +237,51 @@ function publicAttendance(entry) {
     organizationId: entry.organizationId,
     checkedInAt: entry.checkedInAt,
   };
+}
+
+function publicService(service) {
+  return {
+    id: service.id,
+    organizationId: service.organizationId,
+    mechanicId: service.mechanicId,
+    mechanicName: service.mechanicName,
+    managerId: service.managerId,
+    managerName: service.managerName,
+    title: service.title,
+    notes: service.notes,
+    status: service.status,
+    plate: service.plate || "",
+    mileage: service.mileage || "",
+    dashboardPhoto: service.dashboardPhoto || "",
+    rejectionReason: service.rejectionReason || "",
+    createdAt: service.createdAt,
+    acceptedAt: service.acceptedAt || "",
+    rejectedAt: service.rejectedAt || "",
+    finishedAt: service.finishedAt || "",
+  };
+}
+
+function servicesPayload(store, user) {
+  const organizationId = user.organizationId;
+  const services = (store.services || []).filter((service) => service.organizationId === organizationId);
+  if (user.role === "manager") {
+    return {
+      availableMechanics: availableAttendanceQueue(store, organizationId).map(publicAttendance),
+      active: services
+        .filter((service) => ["pending", "running"].includes(service.status))
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+        .map(publicService),
+    };
+  }
+  if (user.role === "employee") {
+    return {
+      mine: services
+        .filter((service) => service.mechanicId === user.id && ["pending", "running"].includes(service.status))
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+        .map(publicService),
+    };
+  }
+  return { availableMechanics: [], active: [], mine: [] };
 }
 
 function publicTeamUser(user, store) {
@@ -415,7 +484,7 @@ async function handleApi(request, response, pathname) {
     const organization = (store.organizations || []).find((item) => item.slug === params.get("org"));
     const tv = { ...(organization?.tv || store.tv || createEmptyStore().tv) };
     if (tv.queueSource === "attendance") {
-      const queue = attendanceQueue(store, organization?.id).map(publicAttendance);
+      const queue = availableAttendanceQueue(store, organization?.id).map(publicAttendance);
       tv.mechanic = queue[0]?.name || tv.mechanic;
       tv.queue = queue.slice(1).map((entry) => entry.name);
     }
@@ -566,8 +635,8 @@ async function handleApi(request, response, pathname) {
 
   if (request.method === "GET" && pathname === "/api/attendance") {
     const organizationId = context.user.role === "owner" ? "" : context.user.organizationId;
-    const queue = attendanceQueue(context.store, organizationId).map(publicAttendance);
-    const mine = queue.find((entry) => entry.userId === context.user.id) || null;
+    const queue = availableAttendanceQueue(context.store, organizationId).map(publicAttendance);
+    const mine = attendanceQueue(context.store, organizationId).map(publicAttendance).find((entry) => entry.userId === context.user.id) || null;
     sendJson(response, 200, { queue, mine });
     return;
   }
@@ -591,13 +660,22 @@ async function handleApi(request, response, pathname) {
       });
       writeStore(context.store);
     }
-    const queue = attendanceQueue(context.store, context.user.organizationId).map(publicAttendance);
-    const mine = queue.find((entry) => entry.userId === context.user.id) || null;
+    const queue = availableAttendanceQueue(context.store, context.user.organizationId).map(publicAttendance);
+    const mine = attendanceQueue(context.store, context.user.organizationId).map(publicAttendance).find((entry) => entry.userId === context.user.id) || null;
     sendJson(response, 200, { queue, mine });
     return;
   }
 
   if (request.method === "POST" && pathname === "/api/attendance/check-out") {
+    const activeService = (context.store.services || []).find(
+      (service) =>
+        service.mechanicId === context.user.id &&
+        ["pending", "running"].includes(service.status),
+    );
+    if (activeService) {
+      sendJson(response, 409, { error: "Finalize ou rejeite o serviÃ§o atual antes de encerrar o expediente." });
+      return;
+    }
     let changed = false;
     context.store.attendance = (context.store.attendance || []).map((entry) => {
       if (entry.userId !== context.user.id || !entry.active) return entry;
@@ -605,10 +683,132 @@ async function handleApi(request, response, pathname) {
       return { ...entry, active: false, checkedOutAt: new Date().toISOString() };
     });
     if (changed) writeStore(context.store);
-    const queue = attendanceQueue(context.store, context.user.organizationId).map(publicAttendance);
-    const mine = queue.find((entry) => entry.userId === context.user.id) || null;
+    const queue = availableAttendanceQueue(context.store, context.user.organizationId).map(publicAttendance);
+    const mine = attendanceQueue(context.store, context.user.organizationId).map(publicAttendance).find((entry) => entry.userId === context.user.id) || null;
     sendJson(response, 200, { queue, mine });
     return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/services") {
+    if (!context.user.organizationId) {
+      sendJson(response, 200, servicesPayload(context.store, context.user));
+      return;
+    }
+    sendJson(response, 200, servicesPayload(context.store, context.user));
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/services") {
+    if (context.user.role !== "manager") {
+      sendJson(response, 403, { error: "Apenas o gestor pode despachar serviÃ§os." });
+      return;
+    }
+    const body = await readJsonBody(request);
+    const mechanicId = sanitizeText(body.mechanicId, 80);
+    const title = sanitizeText(body.title, 140);
+    const notes = sanitizeText(body.notes, 500);
+    if (!mechanicId || title.length < 3) {
+      sendJson(response, 400, { error: "Escolha o mecÃ¢nico e descreva o serviÃ§o." });
+      return;
+    }
+    const available = availableAttendanceQueue(context.store, context.user.organizationId);
+    if (!available.some((entry) => entry.userId === mechanicId)) {
+      sendJson(response, 409, { error: "Este mecÃ¢nico nÃ£o estÃ¡ disponÃ­vel na fila agora." });
+      return;
+    }
+    const mechanic = context.store.users.find(
+      (user) =>
+        user.id === mechanicId &&
+        user.role === "employee" &&
+        user.organizationId === context.user.organizationId,
+    );
+    if (!mechanic) {
+      sendJson(response, 404, { error: "MecÃ¢nico nÃ£o encontrado nesta oficina." });
+      return;
+    }
+    context.store.services ||= [];
+    context.store.services.push({
+      id: crypto.randomUUID(),
+      organizationId: context.user.organizationId,
+      managerId: context.user.id,
+      managerName: context.user.name,
+      mechanicId: mechanic.id,
+      mechanicName: mechanic.name,
+      title,
+      notes,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    });
+    writeStore(context.store);
+    sendJson(response, 201, servicesPayload(context.store, context.user));
+    return;
+  }
+
+  if (pathname.startsWith("/api/services/")) {
+    const [, , , id, action] = pathname.split("/");
+    const service = (context.store.services || []).find((item) => item.id === id);
+    if (!service || service.organizationId !== context.user.organizationId) {
+      sendJson(response, 404, { error: "ServiÃ§o nÃ£o encontrado." });
+      return;
+    }
+
+    if (request.method === "POST" && action === "accept") {
+      if (context.user.id !== service.mechanicId || service.status !== "pending") {
+        sendJson(response, 403, { error: "Este serviÃ§o nÃ£o pode ser aceito por este usuÃ¡rio." });
+        return;
+      }
+      const body = await readJsonBody(request);
+      const plate = sanitizeText(body.plate, 12).toLocaleUpperCase("pt-BR");
+      const mileage = sanitizeText(body.mileage, 20);
+      const dashboardPhoto = String(body.dashboardPhoto || "");
+      if (!plate || !mileage || !dashboardPhoto.startsWith("data:image/")) {
+        sendJson(response, 400, {
+          error: "Informe placa, quilometragem e foto do painel em funcionamento.",
+        });
+        return;
+      }
+      service.status = "running";
+      service.plate = plate;
+      service.mileage = mileage;
+      service.dashboardPhoto = dashboardPhoto;
+      service.acceptedAt = new Date().toISOString();
+      writeStore(context.store);
+      sendJson(response, 200, servicesPayload(context.store, context.user));
+      return;
+    }
+
+    if (request.method === "POST" && action === "reject") {
+      if (context.user.id !== service.mechanicId || service.status !== "pending") {
+        sendJson(response, 403, { error: "Este serviÃ§o nÃ£o pode ser rejeitado por este usuÃ¡rio." });
+        return;
+      }
+      const body = await readJsonBody(request);
+      const rejectionReason = sanitizeText(body.rejectionReason, 500);
+      if (rejectionReason.length < 3) {
+        sendJson(response, 400, { error: "Informe o motivo da rejeiÃ§Ã£o do serviÃ§o." });
+        return;
+      }
+      service.status = "rejected";
+      service.rejectionReason = rejectionReason;
+      service.rejectedAt = new Date().toISOString();
+      moveMechanicToEndOfQueue(context.store, context.user.id);
+      writeStore(context.store);
+      sendJson(response, 200, servicesPayload(context.store, context.user));
+      return;
+    }
+
+    if (request.method === "POST" && action === "finish") {
+      if (context.user.id !== service.mechanicId || service.status !== "running") {
+        sendJson(response, 403, { error: "Este serviÃ§o nÃ£o pode ser finalizado por este usuÃ¡rio." });
+        return;
+      }
+      service.status = "finished";
+      service.finishedAt = new Date().toISOString();
+      moveMechanicToEndOfQueue(context.store, context.user.id);
+      writeStore(context.store);
+      sendJson(response, 200, servicesPayload(context.store, context.user));
+      return;
+    }
   }
 
   if (request.method === "PUT" && pathname === "/api/tv") {
