@@ -214,7 +214,7 @@ function busyMechanicIds(store, organizationId) {
       .filter(
         (service) =>
           service.organizationId === organizationId &&
-          ["pending", "running"].includes(service.status),
+          ["pending", "running", "paused"].includes(service.status),
       )
       .map((service) => service.mechanicId),
   );
@@ -258,7 +258,13 @@ function publicService(service) {
     acceptedAt: service.acceptedAt || "",
     rejectedAt: service.rejectedAt || "",
     finishedAt: service.finishedAt || "",
+    pausedAt: service.pausedAt || "",
+    pausedFromStatus: service.pausedFromStatus || "",
   };
+}
+
+function activeServiceStatuses() {
+  return ["pending", "running", "paused"];
 }
 
 function servicesPayload(store, user) {
@@ -268,7 +274,7 @@ function servicesPayload(store, user) {
     return {
       availableMechanics: availableAttendanceQueue(store, organizationId).map(publicAttendance),
       active: services
-        .filter((service) => ["pending", "running"].includes(service.status))
+        .filter((service) => activeServiceStatuses().includes(service.status))
         .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
         .map(publicService),
     };
@@ -276,7 +282,7 @@ function servicesPayload(store, user) {
   if (user.role === "employee") {
     return {
       mine: services
-        .filter((service) => service.mechanicId === user.id && ["pending", "running"].includes(service.status))
+        .filter((service) => service.mechanicId === user.id && activeServiceStatuses().includes(service.status))
         .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
         .map(publicService),
     };
@@ -658,8 +664,13 @@ async function handleApi(request, response, pathname) {
         checkedInAt: new Date().toISOString(),
         active: true,
       });
-      writeStore(context.store);
     }
+    (context.store.services || []).forEach((service) => {
+      if (service.mechanicId !== context.user.id || service.status !== "paused") return;
+      service.status = service.pausedFromStatus || "running";
+      service.resumedAt = new Date().toISOString();
+    });
+    writeStore(context.store);
     const queue = availableAttendanceQueue(context.store, context.user.organizationId).map(publicAttendance);
     const mine = attendanceQueue(context.store, context.user.organizationId).map(publicAttendance).find((entry) => entry.userId === context.user.id) || null;
     sendJson(response, 200, { queue, mine });
@@ -667,16 +678,14 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "POST" && pathname === "/api/attendance/check-out") {
-    const activeService = (context.store.services || []).find(
-      (service) =>
-        service.mechanicId === context.user.id &&
-        ["pending", "running"].includes(service.status),
-    );
-    if (activeService) {
-      sendJson(response, 409, { error: "Finalize ou rejeite o serviÃ§o atual antes de encerrar o expediente." });
-      return;
-    }
     let changed = false;
+    (context.store.services || []).forEach((service) => {
+      if (service.mechanicId !== context.user.id || !["pending", "running"].includes(service.status)) return;
+      service.pausedFromStatus = service.status;
+      service.status = "paused";
+      service.pausedAt = new Date().toISOString();
+      changed = true;
+    });
     context.store.attendance = (context.store.attendance || []).map((entry) => {
       if (entry.userId !== context.user.id || !entry.active) return entry;
       changed = true;
@@ -753,6 +762,10 @@ async function handleApi(request, response, pathname) {
     }
 
     if (request.method === "POST" && action === "accept") {
+      if (service.status === "paused") {
+        sendJson(response, 409, { error: "Marque presença para retomar este serviço antes de continuar." });
+        return;
+      }
       if (context.user.id !== service.mechanicId || service.status !== "pending") {
         sendJson(response, 403, { error: "Este serviÃ§o nÃ£o pode ser aceito por este usuÃ¡rio." });
         return;
@@ -778,6 +791,10 @@ async function handleApi(request, response, pathname) {
     }
 
     if (request.method === "POST" && action === "reject") {
+      if (service.status === "paused") {
+        sendJson(response, 409, { error: "Marque presença para retomar este serviço antes de rejeitar." });
+        return;
+      }
       if (context.user.id !== service.mechanicId || service.status !== "pending") {
         sendJson(response, 403, { error: "Este serviÃ§o nÃ£o pode ser rejeitado por este usuÃ¡rio." });
         return;
@@ -798,6 +815,10 @@ async function handleApi(request, response, pathname) {
     }
 
     if (request.method === "POST" && action === "finish") {
+      if (service.status === "paused") {
+        sendJson(response, 409, { error: "Marque presença para retomar este serviço antes de finalizar." });
+        return;
+      }
       if (context.user.id !== service.mechanicId || service.status !== "running") {
         sendJson(response, 403, { error: "Este serviÃ§o nÃ£o pode ser finalizado por este usuÃ¡rio." });
         return;

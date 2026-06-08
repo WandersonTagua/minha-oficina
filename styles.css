@@ -743,6 +743,11 @@ select {
   background: var(--green-100);
 }
 
+.service-status.paused {
+  color: var(--slate-600);
+  background: var(--slate-100);
+}
+
 .service-status.pending {
   color: #a46700;
   background: var(--gold-100);

@@ -611,6 +611,7 @@ function serviceStatusLabel(status) {
   const labels = {
     pending: "Aguardando aceite",
     running: "Em execução",
+    paused: "Pausado",
     rejected: "Rejeitado",
     finished: "Finalizado",
   };
@@ -719,6 +720,10 @@ function createPendingServiceCard(service) {
 
 function createRunningServiceCard(service) {
   const card = createServiceSummary(service);
+  if (service.status === "paused") {
+    card.append(createElement("p", "", "Serviço pausado ao encerrar expediente. Marque presença para retomar."));
+    return card;
+  }
   if (service.dashboardPhoto) {
     const image = document.createElement("img");
     image.className = "service-photo";
@@ -1160,7 +1165,7 @@ async function checkOut() {
     state.attendance = await api("/api/attendance/check-out", { method: "POST" });
     renderAttendance();
     await refreshServices();
-    showToast("Você saiu da fila.");
+    showToast("Expediente encerrado. Serviços ativos foram pausados.");
   } catch (error) {
     showToast(error.message);
   }
