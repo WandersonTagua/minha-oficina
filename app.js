@@ -697,6 +697,17 @@ function renderServices() {
   renderEmployeeServices();
 }
 
+function hasServiceFormInProgress() {
+  const form = document.querySelector(".service-response-form");
+  if (!form) return false;
+  if (form.contains(document.activeElement)) return true;
+  const plate = form.elements.plate?.value.trim();
+  const mileage = form.elements.mileage?.value.trim();
+  const rejectionReason = form.elements.rejectionReason?.value.trim();
+  const photo = form.elements.dashboardPhoto?.files?.length;
+  return Boolean(plate || mileage || rejectionReason || photo);
+}
+
 function renderAvailableMechanics() {
   if (!elements.availableMechanicsList) return;
   const queue = state.services.availableMechanics || [];
@@ -813,6 +824,7 @@ function createRunningServiceCard(service) {
 
 function renderEmployeeServices() {
   if (!elements.employeeServicesList) return;
+  if (hasServiceFormInProgress()) return;
   const services = state.services.mine || [];
   if (!services.length) {
     elements.employeeServicesList.replaceChildren(
@@ -1170,13 +1182,14 @@ async function refreshServices() {
   try {
     const previousPending = new Set((state.services.mine || []).filter((service) => service.status === "pending").map((service) => service.id));
     const services = await api("/api/services");
+    const preserveEmployeeForm = state.user.role === "employee" && hasServiceFormInProgress();
     state.services = {
       availableMechanics: services.availableMechanics || [],
       active: services.active || [],
-      mine: services.mine || [],
+      mine: preserveEmployeeForm ? state.services.mine : services.mine || [],
     };
     renderServices();
-    const hasNewPending = state.user.role === "employee" && (state.services.mine || []).some(
+    const hasNewPending = !preserveEmployeeForm && state.user.role === "employee" && (state.services.mine || []).some(
       (service) => service.status === "pending" && !previousPending.has(service.id),
     );
     if (hasNewPending) showToast("Novo serviço recebido.");
@@ -1255,11 +1268,14 @@ async function toggleAttendance() {
 async function acceptService(event, serviceId) {
   event.preventDefault();
   const form = event.currentTarget;
+  if (form.dataset.submitting === "true") return;
   const file = form.elements.dashboardPhoto.files[0];
   if (!file) {
     showToast("Envie a foto do painel em funcionamento.");
     return;
   }
+  form.dataset.submitting = "true";
+  form.querySelectorAll("button").forEach((button) => (button.disabled = true));
   try {
     const dashboardPhoto = await compressImage(file);
     const services = await api(`/api/services/${serviceId}/accept`, {
@@ -1280,17 +1296,22 @@ async function acceptService(event, serviceId) {
     renderServices();
     showToast("Serviço aceito.");
   } catch (error) {
+    form.dataset.submitting = "";
+    form.querySelectorAll("button").forEach((button) => (button.disabled = false));
     showToast(error.message);
   }
 }
 
 async function rejectService(form, serviceId) {
+  if (form.dataset.submitting === "true") return;
   const rejectionReason = form.elements.rejectionReason.value.trim();
   if (rejectionReason.length < 3) {
     showToast("Descreva o motivo da rejeição.");
     form.elements.rejectionReason.focus();
     return;
   }
+  form.dataset.submitting = "true";
+  form.querySelectorAll("button").forEach((button) => (button.disabled = true));
   try {
     const services = await api(`/api/services/${serviceId}/reject`, {
       method: "POST",
@@ -1306,6 +1327,8 @@ async function rejectService(form, serviceId) {
     renderServices();
     showToast("Serviço rejeitado. Você voltou para o fim da fila.");
   } catch (error) {
+    form.dataset.submitting = "";
+    form.querySelectorAll("button").forEach((button) => (button.disabled = false));
     showToast(error.message);
   }
 }
