@@ -1,6 +1,7 @@
 const state = {
   user: null,
   tools: [],
+  mechanicTools: [],
   profile: {
     name: "",
     specialty: "",
@@ -54,8 +55,12 @@ const elements = {
   totalTools: document.querySelector("#totalTools"),
   totalValue: document.querySelector("#totalValue"),
   recentTools: document.querySelector("#recentTools"),
+  inventoryTitle: document.querySelector("#inventoryTitle"),
+  inventorySubtitle: document.querySelector("#inventorySubtitle"),
   toolsGrid: document.querySelector("#toolsGrid"),
   emptyState: document.querySelector("#emptyState"),
+  mechanicToolsSection: document.querySelector("#mechanicToolsSection"),
+  mechanicToolsList: document.querySelector("#mechanicToolsList"),
   searchInput: document.querySelector("#searchInput"),
   categoryFilter: document.querySelector("#categoryFilter"),
   toolModal: document.querySelector("#toolModal"),
@@ -136,6 +141,7 @@ async function api(path, options = {}) {
 function showAuth(tab = "login") {
   state.user = null;
   state.tools = [];
+  state.mechanicTools = [];
   document.body.classList.remove("authenticated");
   document.body.classList.add("auth-pending");
   switchAuthTab(tab);
@@ -186,6 +192,7 @@ async function refreshRoleData() {
       api("/api/attendance"),
     ]);
     state.tools = tools;
+    state.mechanicTools = [];
     state.attendance = attendance;
     renderAttendance();
     showSection("inventory");
@@ -195,13 +202,14 @@ async function refreshRoleData() {
   const tvPath = state.user.organizationSlug
     ? `/api/tv?org=${encodeURIComponent(state.user.organizationSlug)}`
     : "/api/tv";
-  const [{ tools }, { tv }, team, attendance] = await Promise.all([
+  const [{ tools, mechanicTools = [] }, { tv }, team, attendance] = await Promise.all([
     api("/api/tools"),
     api(tvPath),
     api("/api/team"),
     api("/api/attendance"),
   ]);
   state.tools = tools;
+  state.mechanicTools = mechanicTools;
   state.tv = tv;
   state.team = team.users || [];
   state.attendance = attendance;
@@ -246,12 +254,13 @@ function showToast(message) {
 }
 
 function renderStats() {
-  const totalValue = state.tools.reduce((sum, tool) => sum + Number(tool.price || 0), 0);
+  const inventoryTools = getVisibleInventoryTools();
+  const totalValue = inventoryTools.reduce((sum, tool) => sum + Number(tool.price || 0), 0);
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const recent = state.tools.filter((tool) => new Date(tool.createdAt) >= thirtyDaysAgo).length;
+  const recent = inventoryTools.filter((tool) => new Date(tool.createdAt) >= thirtyDaysAgo).length;
 
-  elements.totalTools.textContent = state.tools.length;
+  elements.totalTools.textContent = inventoryTools.length;
   elements.totalValue.textContent = formatCurrency(totalValue);
   elements.recentTools.textContent = recent;
   elements.welcomeName.textContent = state.profile.name?.split(" ")[0] || "mecânico";
@@ -259,7 +268,7 @@ function renderStats() {
 
 function updateCategoryFilter() {
   const selected = elements.categoryFilter.value;
-  const categories = [...new Set(state.tools.map((tool) => tool.category).filter(Boolean))].sort();
+  const categories = [...new Set(getVisibleInventoryTools().map((tool) => tool.category).filter(Boolean))].sort();
 
   elements.categoryFilter.replaceChildren();
   elements.categoryFilter.append(new Option("Todas as categorias", ""));
@@ -267,7 +276,32 @@ function updateCategoryFilter() {
   elements.categoryFilter.value = categories.includes(selected) ? selected : "";
 }
 
-function createToolCard(tool) {
+function getVisibleInventoryTools() {
+  const mechanicTools = state.user?.role === "manager"
+    ? state.mechanicTools.flatMap((mechanic) => mechanic.tools || [])
+    : [];
+  return [...state.tools, ...mechanicTools];
+}
+
+function filterTools(tools) {
+  const search = elements.searchInput.value.trim().toLocaleLowerCase("pt-BR");
+  const category = elements.categoryFilter.value;
+  return tools
+    .filter((tool) => {
+      const searchable = [tool.name, tool.brand, tool.model, tool.category, tool.serial, tool.notes]
+        .join(" ")
+        .toLocaleLowerCase("pt-BR");
+      return (!search || searchable.includes(search)) && (!category || tool.category === category);
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+}
+
+function formatToolCount(count) {
+  return count === 1 ? "1 item" : `${count} itens`;
+}
+
+function createToolCard(tool, options = {}) {
+  const readOnly = Boolean(options.readOnly);
   const card = createElement("article", "tool-card");
   const photo = createElement("div", "tool-card-photo");
 
@@ -287,13 +321,15 @@ function createToolCard(tool) {
   titleBlock.append(createElement("h3", "", tool.name));
 
   const actions = createElement("div", "card-actions");
-  const editButton = createElement("button", "card-action", "Editar");
-  editButton.type = "button";
-  editButton.addEventListener("click", () => openToolModal(tool));
-  const deleteButton = createElement("button", "card-action danger", "Excluir");
-  deleteButton.type = "button";
-  deleteButton.addEventListener("click", () => deleteTool(tool.id));
-  actions.append(editButton, deleteButton);
+  if (!readOnly) {
+    const editButton = createElement("button", "card-action", "Editar");
+    editButton.type = "button";
+    editButton.addEventListener("click", () => openToolModal(tool));
+    const deleteButton = createElement("button", "card-action danger", "Excluir");
+    deleteButton.type = "button";
+    deleteButton.addEventListener("click", () => deleteTool(tool.id));
+    actions.append(editButton, deleteButton);
+  }
   top.append(titleBlock, actions);
 
   const brandModel = [tool.brand, tool.model].filter(Boolean).join(" · ") || "Marca e modelo não informados";
@@ -309,33 +345,94 @@ function createToolCard(tool) {
   priceMeta.append(createElement("strong", "", tool.price ? formatCurrency(tool.price) : "Não informado"));
 
   meta.append(dateMeta, priceMeta);
+  if (tool.serial) {
+    const serialMeta = document.createElement("div");
+    serialMeta.append(createElement("span", "", "Série"));
+    serialMeta.append(createElement("strong", "", tool.serial));
+    meta.append(serialMeta);
+  }
   body.append(top, subtitle, meta);
+  if (tool.notes) body.append(createElement("p", "tool-card-notes", tool.notes));
   card.append(photo, body);
   return card;
 }
 
 function renderTools() {
-  const search = elements.searchInput.value.trim().toLocaleLowerCase("pt-BR");
-  const category = elements.categoryFilter.value;
-  const visibleTools = state.tools
-    .filter((tool) => {
-      const searchable = [tool.name, tool.brand, tool.model, tool.category, tool.serial]
-        .join(" ")
-        .toLocaleLowerCase("pt-BR");
-      return (!search || searchable.includes(search)) && (!category || tool.category === category);
-    })
-    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const visibleTools = filterTools(state.tools);
+  const isManager = state.user?.role === "manager";
+  elements.inventoryTitle.textContent = isManager ? "Ferramentas da oficina" : "Minhas ferramentas";
+  elements.inventorySubtitle.textContent = isManager
+    ? "Cadastre aqui as ferramentas pertencentes à oficina."
+    : "Consulte e mantenha seu inventário atualizado.";
 
   elements.toolsGrid.replaceChildren(...visibleTools.map(createToolCard));
   elements.emptyState.classList.toggle("visible", visibleTools.length === 0);
 
   const emptyTitle = elements.emptyState.querySelector("h3");
   const emptyText = elements.emptyState.querySelector("p");
-  const isFiltered = Boolean(search || category);
-  emptyTitle.textContent = isFiltered ? "Nenhuma ferramenta encontrada" : "Sua bancada digital começa aqui";
+  const isFiltered = Boolean(elements.searchInput.value.trim() || elements.categoryFilter.value);
+  emptyTitle.textContent = isFiltered
+    ? "Nenhuma ferramenta encontrada"
+    : isManager
+      ? "Nenhuma ferramenta da oficina cadastrada"
+      : "Sua bancada digital começa aqui";
   emptyText.textContent = isFiltered
     ? "Tente buscar por outro nome ou remova os filtros."
-    : "Cadastre sua primeira ferramenta para começar a montar o inventário.";
+    : isManager
+      ? "Cadastre as ferramentas que pertencem à oficina neste espaço."
+      : "Cadastre sua primeira ferramenta para começar a montar o inventário.";
+  renderMechanicTools();
+}
+
+function renderMechanicTools() {
+  const isManager = state.user?.role === "manager";
+  elements.mechanicToolsSection.hidden = !isManager;
+  if (!isManager) {
+    elements.mechanicToolsList.replaceChildren();
+    return;
+  }
+
+  if (!state.mechanicTools.length) {
+    elements.mechanicToolsList.replaceChildren(
+      createElement("p", "tool-card-subtitle", "Nenhum colaborador cadastrado ainda."),
+    );
+    return;
+  }
+
+  const hasActiveFilter = Boolean(elements.searchInput.value.trim() || elements.categoryFilter.value);
+  elements.mechanicToolsList.replaceChildren(
+    ...state.mechanicTools.map((mechanic) => {
+      const filteredTools = filterTools(mechanic.tools || []);
+      const details = document.createElement("details");
+      details.className = "mechanic-tools-panel";
+      details.open = hasActiveFilter && filteredTools.length > 0;
+
+      const summary = document.createElement("summary");
+      const title = document.createElement("span");
+      title.append(createElement("strong", "", `Ferramentas de ${mechanic.name}`));
+      title.append(createElement("small", "", mechanic.email));
+      const count = createElement("span", "mechanic-tools-count", formatToolCount(filteredTools.length));
+      summary.append(title, count);
+
+      const content = createElement("div", "mechanic-tools-content");
+      if (!filteredTools.length) {
+        content.append(
+          createElement(
+            "p",
+            "tool-card-subtitle",
+            hasActiveFilter ? "Nenhuma ferramenta encontrada para este filtro." : "Nenhuma ferramenta cadastrada.",
+          ),
+        );
+      } else {
+        const grid = createElement("div", "tools-grid mechanic-tools-grid");
+        grid.replaceChildren(...filteredTools.map((tool) => createToolCard(tool, { readOnly: true })));
+        content.append(grid);
+      }
+
+      details.append(summary, content);
+      return details;
+    }),
+  );
 }
 
 function renderAll() {

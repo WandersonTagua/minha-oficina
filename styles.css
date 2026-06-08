@@ -690,6 +690,69 @@ select {
   gap: 17px;
 }
 
+.mechanic-tools-section {
+  margin-top: 28px;
+}
+
+.mechanic-tools-heading {
+  margin-bottom: 14px;
+}
+
+.mechanic-tools-list {
+  display: grid;
+  gap: 12px;
+}
+
+.mechanic-tools-panel {
+  overflow: hidden;
+  border: 1px solid var(--slate-200);
+  border-radius: 14px;
+  background: var(--white);
+}
+
+.mechanic-tools-panel summary {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  color: var(--slate-900);
+  cursor: pointer;
+  list-style: none;
+}
+
+.mechanic-tools-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.mechanic-tools-panel summary span:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.mechanic-tools-panel summary small {
+  color: var(--slate-500);
+  font-size: 11px;
+}
+
+.mechanic-tools-count {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: var(--blue-700);
+  background: rgba(23, 105, 170, 0.1);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mechanic-tools-content {
+  padding: 0 18px 18px;
+}
+
+.mechanic-tools-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .tool-card {
   overflow: hidden;
   border: 1px solid var(--slate-200);
@@ -785,6 +848,13 @@ select {
   margin-top: 3px;
   color: var(--slate-700);
   font-size: 10px;
+}
+
+.tool-card-notes {
+  margin: 12px 0 0;
+  color: var(--slate-600);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .card-menu {

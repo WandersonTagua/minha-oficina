@@ -209,8 +209,8 @@
 
           <div class="content-heading">
             <div>
-              <h2>Minhas ferramentas</h2>
-              <p>Consulte e mantenha seu inventário atualizado.</p>
+              <h2 id="inventoryTitle">Minhas ferramentas</h2>
+              <p id="inventorySubtitle">Consulte e mantenha seu inventário atualizado.</p>
             </div>
             <div class="filters">
               <label class="search-box">
@@ -236,6 +236,16 @@
             <p>Cadastre sua primeira ferramenta para começar a montar o inventário.</p>
             <button class="button button-primary" id="emptyAddButton">Cadastrar ferramenta</button>
           </div>
+
+          <section class="mechanic-tools-section" id="mechanicToolsSection" hidden>
+            <div class="content-heading mechanic-tools-heading">
+              <div>
+                <h2>Ferramentas dos mecânicos</h2>
+                <p>Clique no nome do mecânico para ver as ferramentas cadastradas por ele.</p>
+              </div>
+            </div>
+            <div class="mechanic-tools-list" id="mechanicToolsList"></div>
+          </section>
         </section>
 
         <section class="page-section" id="profileSection">

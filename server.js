@@ -653,7 +653,17 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "GET" && pathname === "/api/tools") {
-    sendJson(response, 200, { tools: context.user.tools || [] });
+    const mechanicTools = context.user.role === "manager"
+      ? context.store.users
+          .filter((user) => user.role === "employee" && user.organizationId === context.user.organizationId)
+          .map((user) => ({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            tools: user.tools || [],
+          }))
+      : [];
+    sendJson(response, 200, { tools: context.user.tools || [], mechanicTools });
     return;
   }
 
