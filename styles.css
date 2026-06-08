@@ -277,6 +277,12 @@ select {
   text-align: left;
 }
 
+.nav-item[hidden],
+.sidebar-card[hidden],
+.button[hidden] {
+  display: none;
+}
+
 .nav-item:hover,
 .nav-item.active {
   color: var(--white);

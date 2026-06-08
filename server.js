@@ -137,7 +137,10 @@ function createOrganization(store, name) {
     id,
     name: sanitizeText(name, 120) || "Oficina",
     slug,
-    tv: createEmptyStore().tv,
+    tv: {
+      ...createEmptyStore().tv,
+      queueSource: "attendance",
+    },
     createdAt: new Date().toISOString(),
   };
   store.organizations ||= [];
@@ -588,9 +591,9 @@ async function handleApi(request, response, pathname) {
       });
       writeStore(context.store);
     }
-    sendJson(response, 200, {
-      queue: attendanceQueue(context.store, context.user.organizationId).map(publicAttendance),
-    });
+    const queue = attendanceQueue(context.store, context.user.organizationId).map(publicAttendance);
+    const mine = queue.find((entry) => entry.userId === context.user.id) || null;
+    sendJson(response, 200, { queue, mine });
     return;
   }
 
@@ -602,9 +605,9 @@ async function handleApi(request, response, pathname) {
       return { ...entry, active: false, checkedOutAt: new Date().toISOString() };
     });
     if (changed) writeStore(context.store);
-    sendJson(response, 200, {
-      queue: attendanceQueue(context.store, context.user.organizationId).map(publicAttendance),
-    });
+    const queue = attendanceQueue(context.store, context.user.organizationId).map(publicAttendance);
+    const mine = queue.find((entry) => entry.userId === context.user.id) || null;
+    sendJson(response, 200, { queue, mine });
     return;
   }
 

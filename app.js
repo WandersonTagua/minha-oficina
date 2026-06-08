@@ -181,11 +181,14 @@ async function loadApp() {
 async function refreshRoleData() {
   setupRoleUi();
   if (state.user.role === "employee") {
-    const attendance = await api("/api/attendance");
+    const [{ tools }, attendance] = await Promise.all([
+      api("/api/tools"),
+      api("/api/attendance"),
+    ]);
+    state.tools = tools;
     state.attendance = attendance;
-    state.tools = [];
     renderAttendance();
-    showSection("attendance");
+    showSection("inventory");
     return;
   }
 
@@ -382,7 +385,7 @@ function setupRoleUi() {
   document.querySelectorAll("[data-section]").forEach((button) => {
     const section = button.dataset.section;
     const managerSections = ["inventory", "profile", "tv", "team"];
-    const employeeSections = ["attendance"];
+    const employeeSections = ["inventory", "attendance"];
     const ownerSections = ["team", "profile"];
     const visible =
       (role === "owner" && ownerSections.includes(section)) ||
@@ -454,10 +457,13 @@ function renderAttendance() {
   renderAttendanceList(elements.employeeAttendanceList);
   const mine = state.attendance.mine;
   elements.attendanceStatusText.textContent = mine
-    ? "Você já está na fila. Aguarde sua vez."
-    : "Entre na fila quando chegar à oficina.";
-  elements.checkInButton.hidden = Boolean(mine);
-  elements.checkOutButton.hidden = !mine;
+    ? "Você está presente e já entrou na fila da oficina."
+    : "Marque presença para entrar automaticamente na fila.";
+  elements.checkInButton.textContent = mine ? "Encerrar expediente" : "Marcar presença";
+  elements.checkInButton.classList.toggle("button-primary", !mine);
+  elements.checkInButton.classList.toggle("button-secondary", Boolean(mine));
+  elements.checkInButton.hidden = false;
+  elements.checkOutButton.hidden = true;
 }
 
 function openToolModal(tool = null) {
@@ -816,6 +822,14 @@ async function checkOut() {
   }
 }
 
+async function toggleAttendance() {
+  if (state.attendance.mine) {
+    await checkOut();
+    return;
+  }
+  await checkIn();
+}
+
 async function submitLogin(event) {
   event.preventDefault();
   elements.loginError.textContent = "";
@@ -930,8 +944,7 @@ elements.openTvButton.addEventListener("click", () => {
 });
 elements.addYoutubeButton.addEventListener("click", addYoutubeMedia);
 elements.uploadVideoButton.addEventListener("click", uploadLocalVideo);
-elements.checkInButton.addEventListener("click", checkIn);
-elements.checkOutButton.addEventListener("click", checkOut);
+elements.checkInButton.addEventListener("click", toggleAttendance);
 elements.searchInput.addEventListener("input", renderTools);
 elements.categoryFilter.addEventListener("change", renderTools);
 document.addEventListener("keydown", (event) => {
