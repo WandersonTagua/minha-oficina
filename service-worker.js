@@ -1,4 +1,4 @@
-const CACHE_NAME = "minha-oficina-shell-v3";
+const CACHE_NAME = "minha-oficina-shell-v4";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -39,5 +39,40 @@ self.addEventListener("fetch", (event) => {
         return response;
       })
       .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))),
+  );
+});
+
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = {};
+  }
+  const title = data.title || "Minha Oficina";
+  const options = {
+    body: data.body || "Você recebeu uma atualização da oficina.",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    data: {
+      url: data.url || "/",
+      serviceId: data.serviceId || "",
+    },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((client) => new URL(client.url).origin === self.location.origin);
+      if (existing) {
+        existing.focus();
+        return existing.navigate(url);
+      }
+      return self.clients.openWindow(url);
+    }),
   );
 });

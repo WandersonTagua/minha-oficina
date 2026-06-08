@@ -1,6 +1,7 @@
 {
   "name": "Minha Oficina - Inventário de Ferramentas",
   "short_name": "Minha Oficina",
+  "id": "/",
   "description": "Inventário profissional de ferramentas para mecânicos.",
   "start_url": "/",
   "scope": "/",

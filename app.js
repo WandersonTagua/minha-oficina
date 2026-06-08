@@ -30,6 +30,7 @@ const state = {
   currentPhoto: "",
   installPrompt: null,
   servicesPollTimer: null,
+  pushPublicKey: "",
 };
 
 const elements = {
@@ -123,6 +124,7 @@ const elements = {
   attendanceStatusText: document.querySelector("#attendanceStatusText"),
   checkInButton: document.querySelector("#checkInButton"),
   checkOutButton: document.querySelector("#checkOutButton"),
+  enableNotificationsButton: document.querySelector("#enableNotificationsButton"),
   employeeAttendanceList: document.querySelector("#employeeAttendanceList"),
   availableMechanicsList: document.querySelector("#availableMechanicsList"),
   activeServicesList: document.querySelector("#activeServicesList"),
@@ -178,6 +180,75 @@ function showAuthenticated(user) {
   document.body.classList.add("authenticated");
 }
 
+function supportsPushNotifications() {
+  return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = `${base64String}${padding}`.replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+}
+
+async function getPushPublicKey() {
+  if (state.pushPublicKey) return state.pushPublicKey;
+  const { publicKey } = await api("/api/push/public-key");
+  state.pushPublicKey = publicKey;
+  return publicKey;
+}
+
+async function updateNotificationButton() {
+  if (!elements.enableNotificationsButton) return;
+  const visible = state.user?.role === "employee" && supportsPushNotifications();
+  elements.enableNotificationsButton.hidden = !visible;
+  if (!visible) return;
+
+  if (Notification.permission === "granted") {
+    elements.enableNotificationsButton.textContent = "Notificações ativadas";
+    elements.enableNotificationsButton.disabled = true;
+    return;
+  }
+  if (Notification.permission === "denied") {
+    elements.enableNotificationsButton.textContent = "Notificações bloqueadas";
+    elements.enableNotificationsButton.disabled = true;
+    return;
+  }
+  elements.enableNotificationsButton.textContent = "Ativar notificações";
+  elements.enableNotificationsButton.disabled = false;
+}
+
+async function enablePushNotifications() {
+  if (!supportsPushNotifications()) {
+    showToast("Este navegador não suporta notificações do app.");
+    return;
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      await updateNotificationButton();
+      showToast("Permissão de notificação não foi liberada.");
+      return;
+    }
+    const registration = await navigator.serviceWorker.ready;
+    const publicKey = await getPushPublicKey();
+    const subscription =
+      (await registration.pushManager.getSubscription()) ||
+      (await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      }));
+    await api("/api/push/subscribe", {
+      method: "POST",
+      body: JSON.stringify({ subscription }),
+    });
+    await updateNotificationButton();
+    showToast("Notificações ativadas.");
+  } catch (error) {
+    showToast(error.message || "Não foi possível ativar as notificações.");
+  }
+}
+
 function switchAuthTab(tab) {
   const loginActive = tab === "login";
   elements.loginTab.classList.toggle("active", loginActive);
@@ -218,6 +289,7 @@ async function refreshRoleData() {
     };
     renderAttendance();
     renderServices();
+    updateNotificationButton();
     showSection("inventory");
     startServicesPolling();
     return;
@@ -247,6 +319,7 @@ async function refreshRoleData() {
   renderTeam();
   renderAttendance();
   renderServices();
+  updateNotificationButton();
   if (state.user.role === "owner") showSection("team");
   if (state.user.role === "manager") showSection("home");
   startServicesPolling();
@@ -1363,6 +1436,7 @@ elements.loginTab.addEventListener("click", () => switchAuthTab("login"));
 elements.registerTab.addEventListener("click", () => switchAuthTab("register"));
 elements.logoutButton.addEventListener("click", logout);
 elements.installButton.addEventListener("click", installApp);
+elements.enableNotificationsButton.addEventListener("click", enablePushNotifications);
 elements.openTvButton.addEventListener("click", () => {
   const suffix = state.user?.organizationSlug ? `?org=${encodeURIComponent(state.user.organizationSlug)}` : "";
   window.open(`/tv${suffix}`, "_blank", "noopener");

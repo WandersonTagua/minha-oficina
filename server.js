@@ -2,6 +2,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const webPush = require("web-push");
 
 const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "127.0.0.1";
@@ -9,6 +10,9 @@ const root = __dirname;
 const dataFile = process.env.DATA_FILE || path.join(root, "data", "store.json");
 const mediaDir = process.env.MEDIA_DIR || path.join(path.dirname(dataFile), "media");
 const ownerSetupKey = process.env.OWNER_SETUP_KEY || "";
+const vapidSubject = process.env.VAPID_SUBJECT || "mailto:cgerenciador@gmail.com";
+const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "";
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || "";
 const sessions = new Map();
 const loginAttempts = new Map();
 
@@ -56,6 +60,10 @@ function createEmptyStore() {
     organizations: [],
     attendance: [],
     services: [],
+    push: {
+      subscriptions: [],
+      vapid: null,
+    },
     tv: {
       mechanic: "",
       queue: [],
@@ -76,6 +84,8 @@ function readStore() {
     store.organizations ||= [];
     store.attendance ||= [];
     store.services ||= [];
+    store.push ||= {};
+    store.push.subscriptions ||= [];
     store.tv ||= createEmptyStore().tv;
     store.tv.queue ||= [];
     store.tv.playlist ||= [];
@@ -88,6 +98,12 @@ function readStore() {
 
 function migrateStore(store) {
   let changed = false;
+  store.push ||= {};
+  store.push.subscriptions ||= [];
+  if (!vapidPublicKey && !vapidPrivateKey && !store.push.vapid) {
+    store.push.vapid = webPush.generateVAPIDKeys();
+    changed = true;
+  }
   store.users.forEach((user, index) => {
     if (!user.role) {
       user.role = index === 0 ? "owner" : "manager";
@@ -106,6 +122,59 @@ function writeStore(store) {
   const temporaryFile = `${dataFile}.tmp`;
   fs.writeFileSync(temporaryFile, JSON.stringify(store, null, 2));
   fs.renameSync(temporaryFile, dataFile);
+}
+
+function getVapidKeys(store) {
+  if (vapidPublicKey && vapidPrivateKey) {
+    return { publicKey: vapidPublicKey, privateKey: vapidPrivateKey };
+  }
+  store.push ||= {};
+  if (!store.push.vapid) {
+    store.push.vapid = webPush.generateVAPIDKeys();
+    writeStore(store);
+  }
+  return store.push.vapid;
+}
+
+function configureWebPush(store) {
+  const keys = getVapidKeys(store);
+  webPush.setVapidDetails(vapidSubject, keys.publicKey, keys.privateKey);
+  return keys;
+}
+
+function normalizeSubscription(subscription) {
+  if (!subscription || typeof subscription !== "object") return null;
+  if (!subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) return null;
+  return {
+    endpoint: String(subscription.endpoint),
+    expirationTime: subscription.expirationTime || null,
+    keys: {
+      p256dh: String(subscription.keys.p256dh),
+      auth: String(subscription.keys.auth),
+    },
+  };
+}
+
+async function sendPushToUser(store, userId, payload) {
+  configureWebPush(store);
+  const subscriptions = store.push?.subscriptions || [];
+  const targets = subscriptions.filter((item) => item.userId === userId);
+  if (!targets.length) return;
+  const message = JSON.stringify(payload);
+  const failedEndpoints = new Set();
+  await Promise.all(
+    targets.map(async (item) => {
+      try {
+        await webPush.sendNotification(item.subscription, message);
+      } catch (error) {
+        if ([404, 410].includes(error.statusCode)) failedEndpoints.add(item.subscription.endpoint);
+      }
+    }),
+  );
+  if (failedEndpoints.size) {
+    store.push.subscriptions = subscriptions.filter((item) => !failedEndpoints.has(item.subscription.endpoint));
+    writeStore(store);
+  }
 }
 
 function normalizeEmail(value) {
@@ -582,6 +651,49 @@ async function handleApi(request, response, pathname) {
   const context = requireUser(request, response);
   if (!context) return;
 
+  if (request.method === "GET" && pathname === "/api/push/public-key") {
+    const keys = configureWebPush(context.store);
+    sendJson(response, 200, { publicKey: keys.publicKey });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/push/subscribe") {
+    const body = await readJsonBody(request);
+    const subscription = normalizeSubscription(body.subscription || body);
+    if (!subscription) {
+      sendJson(response, 400, { error: "InscriÃ§Ã£o de notificaÃ§Ã£o invÃ¡lida." });
+      return;
+    }
+    context.store.push ||= {};
+    context.store.push.subscriptions ||= [];
+    context.store.push.subscriptions = context.store.push.subscriptions.filter(
+      (item) => item.subscription.endpoint !== subscription.endpoint,
+    );
+    context.store.push.subscriptions.push({
+      userId: context.user.id,
+      organizationId: context.user.organizationId || "",
+      role: context.user.role,
+      subscription,
+      createdAt: new Date().toISOString(),
+    });
+    writeStore(context.store);
+    sendJson(response, 200, { ok: true });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/push/unsubscribe") {
+    const body = await readJsonBody(request);
+    const endpoint = String(body.endpoint || "");
+    context.store.push ||= {};
+    context.store.push.subscriptions ||= [];
+    context.store.push.subscriptions = context.store.push.subscriptions.filter(
+      (item) => item.subscription.endpoint !== endpoint || item.userId !== context.user.id,
+    );
+    writeStore(context.store);
+    sendJson(response, 200, { ok: true });
+    return;
+  }
+
   if (request.method === "GET" && pathname === "/api/team") {
     if (!ensureTeamAccess(context.user, response)) return;
     const users = context.user.role === "owner"
@@ -736,7 +848,7 @@ async function handleApi(request, response, pathname) {
       return;
     }
     context.store.services ||= [];
-    context.store.services.push({
+    const service = {
       id: crypto.randomUUID(),
       organizationId: context.user.organizationId,
       managerId: context.user.id,
@@ -747,8 +859,15 @@ async function handleApi(request, response, pathname) {
       notes,
       status: "pending",
       createdAt: new Date().toISOString(),
-    });
+    };
+    context.store.services.push(service);
     writeStore(context.store);
+    await sendPushToUser(context.store, mechanic.id, {
+      title: "Novo serviço recebido",
+      body: `${context.user.name} enviou: ${title}`,
+      url: "/",
+      serviceId: service.id,
+    });
     sendJson(response, 201, servicesPayload(context.store, context.user));
     return;
   }
