@@ -329,11 +329,12 @@ function publicService(service) {
     finishedAt: service.finishedAt || "",
     pausedAt: service.pausedAt || "",
     pausedFromStatus: service.pausedFromStatus || "",
+    approvalPausedAt: service.approvalPausedAt || "",
   };
 }
 
 function activeServiceStatuses() {
-  return ["pending", "running", "paused"];
+  return ["pending", "running", "paused", "approval_paused"];
 }
 
 function servicesPayload(store, user) {
@@ -938,12 +939,29 @@ async function handleApi(request, response, pathname) {
         sendJson(response, 409, { error: "Marque presença para retomar este serviço antes de finalizar." });
         return;
       }
+      if (service.status === "approval_paused") {
+        sendJson(response, 409, { error: "Este serviço está pausado aguardando aprovação." });
+        return;
+      }
       if (context.user.id !== service.mechanicId || service.status !== "running") {
         sendJson(response, 403, { error: "Este serviÃ§o nÃ£o pode ser finalizado por este usuÃ¡rio." });
         return;
       }
       service.status = "finished";
       service.finishedAt = new Date().toISOString();
+      moveMechanicToEndOfQueue(context.store, context.user.id);
+      writeStore(context.store);
+      sendJson(response, 200, servicesPayload(context.store, context.user));
+      return;
+    }
+
+    if (request.method === "POST" && action === "pause-approval") {
+      if (context.user.id !== service.mechanicId || service.status !== "running") {
+        sendJson(response, 403, { error: "Este serviço não pode ser pausado para aprovação." });
+        return;
+      }
+      service.status = "approval_paused";
+      service.approvalPausedAt = new Date().toISOString();
       moveMechanicToEndOfQueue(context.store, context.user.id);
       writeStore(context.store);
       sendJson(response, 200, servicesPayload(context.store, context.user));

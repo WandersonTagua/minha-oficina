@@ -52,6 +52,7 @@ const elements = {
   accountEmail: document.querySelector("#accountEmail"),
   accountAvatar: document.querySelector("#accountAvatar"),
   sidebar: document.querySelector(".sidebar"),
+  topbarEyebrow: document.querySelector("#topbarEyebrow"),
   pageTitle: document.querySelector("#pageTitle"),
   homeSection: document.querySelector("#homeSection"),
   inventorySection: document.querySelector("#inventorySection"),
@@ -290,7 +291,7 @@ async function refreshRoleData() {
     renderAttendance();
     renderServices();
     updateNotificationButton();
-    showSection("inventory");
+    showSection("attendance");
     startServicesPolling();
     return;
   }
@@ -597,8 +598,12 @@ function setupRoleUi() {
       (role === "employee" && employeeSections.includes(section));
     button.hidden = !visible;
   });
+  document.querySelector('[data-section="attendance"]').style.order = role === "employee" ? "-1" : "";
+  document.querySelector('[data-section="inventory"]').style.order = role === "employee" ? "1" : "";
 
   elements.organizationField.hidden = role !== "owner";
+  elements.topbarEyebrow.textContent =
+    role === "owner" ? "GESTÃO DO SITE" : role === "manager" ? "GESTÃO DA OFICINA" : "PAINEL DO MECÂNICO";
   elements.teamTitle.textContent = role === "owner" ? "Gestores/clientes" : "Colaboradores e fila";
   elements.teamSubtitle.textContent =
     role === "owner"
@@ -685,16 +690,17 @@ function serviceStatusLabel(status) {
     pending: "Aguardando aceite",
     running: "Em execução",
     paused: "Pausado",
+    approval_paused: "Pausado para aprovação",
     rejected: "Rejeitado",
     finished: "Finalizado",
   };
   return labels[status] || status;
 }
 
-function renderServices() {
+function renderServices(options = {}) {
   renderAvailableMechanics();
   renderActiveServices();
-  renderEmployeeServices();
+  renderEmployeeServices(options);
 }
 
 function hasServiceFormInProgress() {
@@ -808,6 +814,10 @@ function createRunningServiceCard(service) {
     card.append(createElement("p", "", "Serviço pausado ao encerrar expediente. Marque presença para retomar."));
     return card;
   }
+  if (service.status === "approval_paused") {
+    card.append(createElement("p", "", "Serviço pausado aguardando aprovação. Você voltou para o fim da fila."));
+    return card;
+  }
   if (service.dashboardPhoto) {
     const image = document.createElement("img");
     image.className = "service-photo";
@@ -815,16 +825,21 @@ function createRunningServiceCard(service) {
     image.alt = `Painel do veículo ${service.plate}`;
     card.append(image);
   }
-  const finishButton = createElement("button", "button button-primary", "Marcar serviço como terminado");
+  const finishButton = createElement("button", "button button-primary", "Encerrar serviço");
   finishButton.type = "button";
   finishButton.addEventListener("click", () => finishService(service.id));
-  card.append(finishButton);
+  const approvalPauseButton = createElement("button", "button button-secondary", "Pausa para aprovação");
+  approvalPauseButton.type = "button";
+  approvalPauseButton.addEventListener("click", () => pauseServiceForApproval(service.id));
+  const actions = createElement("div", "service-actions");
+  actions.append(finishButton, approvalPauseButton);
+  card.append(actions);
   return card;
 }
 
-function renderEmployeeServices() {
+function renderEmployeeServices(options = {}) {
   if (!elements.employeeServicesList) return;
-  if (hasServiceFormInProgress()) return;
+  if (!options.forceEmployee && hasServiceFormInProgress()) return;
   const services = state.services.mine || [];
   if (!services.length) {
     elements.employeeServicesList.replaceChildren(
@@ -1150,6 +1165,9 @@ function showSection(sectionName) {
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.section === sectionName);
   });
+  const showInventoryActions = state.user?.role === "manager" && sectionName === "inventory";
+  document.querySelector("#addToolButton").hidden = !showInventoryActions;
+  document.querySelector("#reportButton").hidden = !showInventoryActions;
   elements.sidebar.classList.remove("open");
 }
 
@@ -1293,7 +1311,7 @@ async function acceptService(event, serviceId) {
     };
     state.attendance = await api("/api/attendance");
     renderAttendance();
-    renderServices();
+    renderServices({ forceEmployee: true });
     showToast("Serviço aceito.");
   } catch (error) {
     form.dataset.submitting = "";
@@ -1324,7 +1342,7 @@ async function rejectService(form, serviceId) {
     };
     state.attendance = await api("/api/attendance");
     renderAttendance();
-    renderServices();
+    renderServices({ forceEmployee: true });
     showToast("Serviço rejeitado. Você voltou para o fim da fila.");
   } catch (error) {
     form.dataset.submitting = "";
@@ -1343,8 +1361,25 @@ async function finishService(serviceId) {
     };
     state.attendance = await api("/api/attendance");
     renderAttendance();
-    renderServices();
+    renderServices({ forceEmployee: true });
     showToast("Serviço finalizado. Você voltou para a fila.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function pauseServiceForApproval(serviceId) {
+  try {
+    const services = await api(`/api/services/${serviceId}/pause-approval`, { method: "POST" });
+    state.services = {
+      availableMechanics: [],
+      active: [],
+      mine: services.mine || [],
+    };
+    state.attendance = await api("/api/attendance");
+    renderAttendance();
+    renderServices({ forceEmployee: true });
+    showToast("Serviço pausado para aprovação. Você voltou para o fim da fila.");
   } catch (error) {
     showToast(error.message);
   }

@@ -1,8 +1,8 @@
 {
-  "name": "Minha Oficina - Inventário de Ferramentas",
+  "name": "Minha Oficina - Gestão de Oficina",
   "short_name": "Minha Oficina",
   "id": "/",
-  "description": "Inventário profissional de ferramentas para mecânicos.",
+  "description": "Gestão de oficina, serviços, presença e ferramentas.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

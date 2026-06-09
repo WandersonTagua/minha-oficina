@@ -209,11 +209,21 @@ select {
   width: 250px;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
   padding: 27px 20px 22px;
   color: var(--white);
   background:
     radial-gradient(circle at 10% 80%, rgba(23, 105, 170, 0.26), transparent 34%),
     var(--navy-950);
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .brand {
@@ -746,6 +756,11 @@ select {
 .service-status.paused {
   color: var(--slate-600);
   background: var(--slate-100);
+}
+
+.service-status.approval_paused {
+  color: #a46700;
+  background: var(--gold-100);
 }
 
 .service-status.pending {

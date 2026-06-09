@@ -2,7 +2,7 @@
   "name": "minha-oficina",
   "version": "0.1.0",
   "private": true,
-  "description": "PWA multiusuário de inventário de ferramentas para mecânicos",
+  "description": "PWA multiusuário de gestão de oficina",
   "engines": {
     "node": ">=20"
   },
