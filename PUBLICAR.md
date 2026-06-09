@@ -82,10 +82,48 @@ Depois que o serviço for criado, abra **Environment** no Render e troque:
 
 ```text
 OWNER_SETUP_KEY=trocar-este-codigo-no-render
+DEV_SEED_KEY=trocar-este-codigo-no-render
 ```
 
 Use um código seu, por exemplo uma frase com letras, números e símbolos. Esse
 código será exigido somente para criar o primeiro dono da plataforma.
+
+`DEV_SEED_KEY` protege a rota que recria dados de teste. Use outro código
+secreto ou o mesmo do dono enquanto estiver testando.
+
+### Recriar ambiente de teste
+
+Se o Render gratuito apagar os dados, acesse este endereço trocando
+`SEU_CODIGO` pelo valor de `DEV_SEED_KEY`:
+
+```text
+https://minha-oficina.onrender.com/api/dev/seed?key=SEU_CODIGO
+```
+
+Isso cria uma oficina de teste, um dono, um gestor, três mecânicos, algumas
+ferramentas e a fila de presença.
+
+Logins criados:
+
+```text
+Dono: dono@minhaoficina.teste
+Gestor: gestor@minhaoficina.teste
+Mecânicos:
+- wanderson@mecanico.teste
+- henrique@mecanico.teste
+- leo@mecanico.teste
+
+Senha de todos: 12345678
+```
+
+Para limpar e recriar os dados de teste do zero, use:
+
+```text
+https://minha-oficina.onrender.com/api/dev/seed?key=SEU_CODIGO&reset=1
+```
+
+Use essa rota somente em fase de teste. Em produção, remova ou troque a chave
+antes de entregar para clientes.
 
 ## 5. Usar disco persistente
 

@@ -10,6 +10,7 @@ const root = __dirname;
 const dataFile = process.env.DATA_FILE || path.join(root, "data", "store.json");
 const mediaDir = process.env.MEDIA_DIR || path.join(path.dirname(dataFile), "media");
 const ownerSetupKey = process.env.OWNER_SETUP_KEY || "";
+const devSeedKey = process.env.DEV_SEED_KEY || ownerSetupKey;
 const vapidSubject = process.env.VAPID_SUBJECT || "mailto:cgerenciador@gmail.com";
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "";
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || "";
@@ -300,6 +301,179 @@ function createUser({ name, email, password, role, organizationId = "", profile 
     },
     tools: [],
     createdAt: new Date().toISOString(),
+  };
+}
+
+function setUserPassword(user, password) {
+  const passwordData = hashPassword(password);
+  user.passwordSalt = passwordData.salt;
+  user.passwordHash = passwordData.hash;
+}
+
+function ensureSeedUser(store, data) {
+  const email = normalizeEmail(data.email);
+  let user = store.users.find((item) => item.email === email);
+  if (!user) {
+    user = createUser({
+      name: data.name,
+      email,
+      password: data.password,
+      role: data.role,
+      organizationId: data.organizationId,
+      profile: data.profile,
+    });
+    store.users.push(user);
+  } else {
+    user.name = data.name;
+    user.role = data.role;
+    user.organizationId = data.organizationId || "";
+    user.profile = {
+      ...(user.profile || {}),
+      name: data.name,
+      specialty: data.profile?.specialty || "",
+      phone: data.profile?.phone || "",
+      shop: data.profile?.shop || "",
+    };
+    user.tools ||= [];
+    setUserPassword(user, data.password);
+  }
+  return user;
+}
+
+function seedTools(user, tools) {
+  user.tools ||= [];
+  if (user.tools.length) return;
+  user.tools.push(
+    ...tools.map((tool) => cleanTool({
+      name: tool.name,
+      brand: tool.brand,
+      model: tool.model,
+      category: tool.category,
+      date: tool.date,
+      price: tool.price,
+      serial: tool.serial,
+      notes: tool.notes,
+      photo: "",
+    })),
+  );
+}
+
+function seedAttendance(store, user, minutesAgo) {
+  const existing = (store.attendance || []).find((entry) => entry.userId === user.id && entry.active);
+  if (existing) return;
+  const checkedInAt = new Date(Date.now() - minutesAgo * 60 * 1000).toISOString();
+  store.attendance.push({
+    id: crypto.randomUUID(),
+    userId: user.id,
+    name: user.name,
+    organizationId: user.organizationId,
+    checkedInAt,
+    active: true,
+  });
+}
+
+function seedTestData(store, { reset = false } = {}) {
+  if (reset) {
+    store.users = [];
+    store.organizations = [];
+    store.attendance = [];
+    store.services = [];
+    store.push ||= {};
+    store.push.subscriptions = [];
+  }
+  store.users ||= [];
+  store.organizations ||= [];
+  store.attendance ||= [];
+  store.services ||= [];
+
+  let organization = (store.organizations || []).find((item) => item.slug === "oficina-teste");
+  if (!organization) {
+    organization = createOrganizationWithPlan(store, "Oficina Teste", "monthly");
+    organization.slug = "oficina-teste";
+  }
+  organization.subscription ||= createSubscription("monthly");
+  organization.subscription.status = "active";
+  organization.tv = {
+    ...(organization.tv || createEmptyStore().tv),
+    mechanic: "Wanderson",
+    queueSource: "attendance",
+    notice: "Ambiente de teste: confira as ordens de serviço e a fila.",
+    highlight: "Teste de painel TV ativo",
+  };
+
+  const password = "12345678";
+  const owner = ensureSeedUser(store, {
+    name: "Dono Teste",
+    email: "dono@minhaoficina.teste",
+    password,
+    role: "owner",
+    profile: { shop: "Minha Oficina Plataforma" },
+  });
+  const manager = ensureSeedUser(store, {
+    name: "Gestor Oficina Teste",
+    email: "gestor@minhaoficina.teste",
+    password,
+    role: "manager",
+    organizationId: organization.id,
+    profile: { shop: organization.name },
+  });
+  const mechanics = [
+    ensureSeedUser(store, {
+      name: "Wanderson Mecânico",
+      email: "wanderson@mecanico.teste",
+      password,
+      role: "employee",
+      organizationId: organization.id,
+      profile: { specialty: "Diagnóstico", shop: organization.name },
+    }),
+    ensureSeedUser(store, {
+      name: "Henrique Mecânico",
+      email: "henrique@mecanico.teste",
+      password,
+      role: "employee",
+      organizationId: organization.id,
+      profile: { specialty: "Suspensão", shop: organization.name },
+    }),
+    ensureSeedUser(store, {
+      name: "Leo Mecânico",
+      email: "leo@mecanico.teste",
+      password,
+      role: "employee",
+      organizationId: organization.id,
+      profile: { specialty: "Elétrica", shop: organization.name },
+    }),
+  ];
+
+  seedTools(manager, [
+    { name: "Scanner automotivo", brand: "Launch", model: "CRP", category: "Diagnóstico", date: "2026-01-10", price: 1800, serial: "TESTE-001", notes: "Ferramenta da oficina." },
+    { name: "Carregador de bateria", brand: "JFA", model: "150A", category: "Elétrica", date: "2026-02-15", price: 650, serial: "TESTE-002", notes: "Uso compartilhado." },
+  ]);
+  seedTools(mechanics[0], [
+    { name: "Multímetro", brand: "Minipa", model: "ET-1002", category: "Elétrica", date: "2025-09-12", price: 120, serial: "WAN-001", notes: "Ferramenta do mecânico." },
+    { name: "Jogo de soquetes", brand: "Gedore", model: "1/2", category: "Manual", date: "2025-11-20", price: 380, serial: "WAN-002", notes: "Completo." },
+  ]);
+  seedTools(mechanics[1], [
+    { name: "Torquímetro", brand: "Vonder", model: "20-100Nm", category: "Manual", date: "2025-10-05", price: 260, serial: "HEN-001", notes: "Calibrado." },
+  ]);
+
+  seedAttendance(store, mechanics[0], 25);
+  seedAttendance(store, mechanics[1], 15);
+  seedAttendance(store, mechanics[2], 5);
+
+  return {
+    ok: true,
+    organization: {
+      name: organization.name,
+      slug: organization.slug,
+      plan: organization.subscription.plan,
+      status: organization.subscription.status,
+    },
+    credentials: {
+      password,
+      owner: owner.email,
+      manager: manager.email,
+      mechanics: mechanics.map((user) => user.email),
+    },
   };
 }
 
@@ -619,6 +793,23 @@ async function handleApi(request, response, pathname) {
       tv.queue = queue.slice(1).map((entry) => entry.name);
     }
     sendJson(response, 200, { tv });
+    return;
+  }
+
+  if (["GET", "POST"].includes(request.method) && pathname === "/api/dev/seed") {
+    const body = request.method === "POST" ? await readJsonBody(request) : {};
+    const params = new URL(request.url, `http://${request.headers.host}`).searchParams;
+    const providedKey = String(request.headers["x-seed-key"] || body.key || params.get("key") || "");
+    if (!devSeedKey || providedKey !== devSeedKey) {
+      sendJson(response, 403, { error: "Chave de teste inválida." });
+      return;
+    }
+    const store = readStore();
+    const seeded = seedTestData(store, {
+      reset: body.reset === true || params.get("reset") === "1",
+    });
+    writeStore(store);
+    sendJson(response, 200, seeded);
     return;
   }
 

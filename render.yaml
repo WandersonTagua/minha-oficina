@@ -15,3 +15,5 @@ services:
         value: /tmp/store.json
       - key: OWNER_SETUP_KEY
         value: trocar-este-codigo-no-render
+      - key: DEV_SEED_KEY
+        value: trocar-este-codigo-no-render
