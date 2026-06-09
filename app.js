@@ -23,6 +23,7 @@ const state = {
     playlist: [],
   },
   team: [],
+  teamMode: "list",
   attendance: {
     queue: [],
     mine: null,
@@ -59,6 +60,7 @@ const elements = {
   profileSection: document.querySelector("#profileSection"),
   tvSection: document.querySelector("#tvSection"),
   teamSection: document.querySelector("#teamSection"),
+  teamNavLabel: document.querySelector("#teamNavLabel"),
   attendanceSection: document.querySelector("#attendanceSection"),
   welcomeName: document.querySelector("#welcomeName"),
   totalTools: document.querySelector("#totalTools"),
@@ -113,6 +115,10 @@ const elements = {
   teamPassword: document.querySelector("#teamPassword"),
   organizationField: document.querySelector("#organizationField"),
   organizationName: document.querySelector("#organizationName"),
+  subscriptionPlanField: document.querySelector("#subscriptionPlanField"),
+  subscriptionPlan: document.querySelector("#subscriptionPlan"),
+  teamPanels: document.querySelector("#teamPanels"),
+  managerAttendancePanel: document.querySelector("#managerAttendancePanel"),
   teamTitle: document.querySelector("#teamTitle"),
   teamSubtitle: document.querySelector("#teamSubtitle"),
   teamFormTitle: document.querySelector("#teamFormTitle"),
@@ -591,41 +597,47 @@ function setupRoleUi() {
     const section = button.dataset.section;
     const managerSections = ["home", "inventory", "profile", "tv", "team"];
     const employeeSections = ["inventory", "attendance"];
-    const ownerSections = ["team", "profile"];
+    const ownerSections = ["team"];
     const visible =
       (role === "owner" && ownerSections.includes(section)) ||
       (role === "manager" && managerSections.includes(section)) ||
       (role === "employee" && employeeSections.includes(section));
-    button.hidden = !visible;
+    button.hidden = !visible || (button.hasAttribute("data-owner-only") && role !== "owner");
+    if (role !== "owner" && button.dataset.teamMode === "create") button.hidden = true;
   });
   document.querySelector('[data-section="attendance"]').style.order = role === "employee" ? "-1" : "";
   document.querySelector('[data-section="inventory"]').style.order = role === "employee" ? "1" : "";
 
   elements.organizationField.hidden = role !== "owner";
+  elements.subscriptionPlanField.hidden = role !== "owner";
   elements.topbarEyebrow.textContent =
     role === "owner" ? "GESTÃO DO SITE" : role === "manager" ? "GESTÃO DA OFICINA" : "PAINEL DO MECÂNICO";
-  elements.teamTitle.textContent = role === "owner" ? "Gestores/clientes" : "Colaboradores e fila";
-  elements.teamSubtitle.textContent =
-    role === "owner"
-      ? "Cadastre os gestores das oficinas que usarão o sistema."
-      : "Cadastre colaboradores e acompanhe a ordem de chegada.";
   elements.teamFormTitle.textContent = role === "owner" ? "Cadastrar gestor" : "Cadastrar colaborador";
   elements.teamFormHelp.textContent =
     role === "owner"
-      ? "Este gestor poderá cadastrar os próprios colaboradores."
+      ? "Defina a oficina, o plano e o acesso inicial do gestor."
       : "O colaborador usará o celular para marcar presença.";
-  elements.teamListTitle.textContent = role === "owner" ? "Gestores cadastrados" : "Colaboradores cadastrados";
   elements.teamSubmitButton.textContent = role === "owner" ? "Cadastrar gestor" : "Cadastrar colaborador";
+  elements.teamNavLabel.textContent = role === "owner" ? "Clientes/Oficinas" : "Equipe/Fila";
   document.querySelector("#addToolButton").hidden = role !== "manager";
   document.querySelector("#reportButton").hidden = role !== "manager";
   document.querySelector("#sidebarReportButton").hidden = role !== "manager";
   document.querySelector(".sidebar-card").hidden = role !== "manager";
+  updateTeamLayout();
 }
 
 function renderTeam() {
   if (!elements.teamList) return;
+  updateTeamLayout();
   if (!state.team.length) {
-    elements.teamList.replaceChildren(createElement("p", "tool-card-subtitle", "Nenhum usuário cadastrado ainda."));
+    const emptyText = state.user?.role === "owner"
+      ? "Nenhuma oficina cadastrada ainda."
+      : "Nenhum usuário cadastrado ainda.";
+    elements.teamList.replaceChildren(createElement("p", "tool-card-subtitle", emptyText));
+    return;
+  }
+  if (state.user?.role === "owner") {
+    elements.teamList.replaceChildren(...state.team.map(createOwnerClientCard));
     return;
   }
   elements.teamList.replaceChildren(
@@ -640,6 +652,71 @@ function renderTeam() {
       return row;
     }),
   );
+}
+
+function updateTeamLayout() {
+  const role = state.user?.role || "employee";
+  const isOwner = role === "owner";
+  const isCreateMode = isOwner && state.teamMode === "create";
+  elements.teamForm.hidden = isOwner ? !isCreateMode : false;
+  elements.teamPanels.hidden = isOwner ? isCreateMode : false;
+  elements.teamPanels.classList.toggle("owner-client-mode", isOwner);
+  elements.managerAttendancePanel.hidden = isOwner;
+  elements.teamTitle.textContent = isOwner
+    ? isCreateMode ? "Cadastrar gestor" : "Clientes/Oficinas"
+    : "Colaboradores e fila";
+  elements.teamSubtitle.textContent = isOwner
+    ? isCreateMode
+      ? "Crie o acesso do gestor e escolha o plano inicial da oficina."
+      : "Gerencie oficinas, planos de assinatura e acesso dos gestores."
+    : "Cadastre colaboradores e acompanhe a ordem de chegada.";
+  elements.teamListTitle.textContent = isOwner ? "Gestores cadastrados" : "Colaboradores cadastrados";
+}
+
+function planLabel(plan) {
+  return plan === "annual" ? "Anual" : "Mensal";
+}
+
+function statusLabel(status) {
+  return status === "blocked" ? "Bloqueado" : "Liberado";
+}
+
+function formatDate(value) {
+  if (!value) return "Sem vencimento";
+  return new Date(value).toLocaleDateString("pt-BR");
+}
+
+function createOwnerClientCard(user) {
+  const subscription = user.organizationSubscription || {};
+  const row = createElement("div", "client-office-card");
+  const header = createElement("div", "client-office-header");
+  const avatar = createElement("span", "account-avatar", user.organizationName.charAt(0).toLocaleUpperCase("pt-BR") || user.name.charAt(0).toLocaleUpperCase("pt-BR"));
+  const info = document.createElement("div");
+  info.append(createElement("strong", "", user.organizationName || "Oficina sem nome"));
+  info.append(createElement("small", "", `${user.name} · ${user.email}`));
+  const status = createElement("span", `subscription-chip ${subscription.status === "blocked" ? "is-blocked" : "is-active"}`, statusLabel(subscription.status));
+  header.append(avatar, info, status);
+
+  const details = createElement("div", "client-office-details");
+  details.append(
+    createElement("span", "", `Plano: ${planLabel(subscription.plan)}`),
+    createElement("span", "", `Vence em: ${formatDate(subscription.expiresAt)}`),
+  );
+
+  const actions = createElement("div", "client-office-actions");
+  const releaseButton = createElement("button", "button button-secondary", "Liberar");
+  const renewButton = createElement("button", "button button-primary", "Renovar");
+  const blockButton = createElement("button", "button button-danger", "Bloquear");
+  [releaseButton, renewButton, blockButton].forEach((button) => {
+    button.type = "button";
+  });
+  releaseButton.addEventListener("click", () => updateOrganizationSubscription(user.organizationId, "activate"));
+  renewButton.addEventListener("click", () => updateOrganizationSubscription(user.organizationId, "renew"));
+  blockButton.addEventListener("click", () => updateOrganizationSubscription(user.organizationId, "block"));
+  actions.append(releaseButton, renewButton, blockButton);
+
+  row.append(header, details, actions);
+  return row;
 }
 
 function renderAttendanceList(container) {
@@ -1147,12 +1224,15 @@ function printReport() {
 }
 
 function showSection(sectionName) {
+  if (sectionName === "team") updateTeamLayout();
   const titles = {
     home: "Início",
     inventory: "Inventário",
     profile: "Meus dados",
     tv: "Painel TV",
-    team: state.user?.role === "owner" ? "Gestores/clientes" : "Equipe/Fila",
+    team: state.user?.role === "owner"
+      ? state.teamMode === "create" ? "Cadastrar gestor" : "Clientes/Oficinas"
+      : "Equipe/Fila",
     attendance: "Presença",
   };
   elements.homeSection.classList.toggle("active", sectionName === "home");
@@ -1163,7 +1243,10 @@ function showSection(sectionName) {
   elements.attendanceSection.classList.toggle("active", sectionName === "attendance");
   elements.pageTitle.textContent = titles[sectionName] || "Inventário";
   document.querySelectorAll(".nav-item").forEach((button) => {
-    button.classList.toggle("active", button.dataset.section === sectionName);
+    const isActiveTeamMode = sectionName === "team" && button.dataset.section === "team"
+      ? (button.dataset.teamMode || "list") === state.teamMode
+      : button.dataset.section === sectionName;
+    button.classList.toggle("active", isActiveTeamMode);
   });
   const showInventoryActions = state.user?.role === "manager" && sectionName === "inventory";
   document.querySelector("#addToolButton").hidden = !showInventoryActions;
@@ -1179,6 +1262,7 @@ async function submitTeam(event) {
       email: elements.teamEmail.value.trim(),
       password: elements.teamPassword.value,
       organizationName: elements.organizationName.value.trim(),
+      plan: elements.subscriptionPlan.value,
     };
     const { user } = await api("/api/team", {
       method: "POST",
@@ -1186,10 +1270,34 @@ async function submitTeam(event) {
     });
     state.team.push(user);
     elements.teamForm.reset();
+    if (state.user.role === "owner") {
+      state.teamMode = "list";
+      showSection("team");
+    }
     renderTeam();
     elements.teamSavedMessage.textContent =
       state.user.role === "owner" ? "Gestor cadastrado." : "Colaborador cadastrado.";
     setTimeout(() => (elements.teamSavedMessage.textContent = ""), 2600);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function updateOrganizationSubscription(organizationId, action) {
+  try {
+    const data = await api(`/api/organizations/${organizationId}/subscription`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    });
+    state.team = data.users || state.team;
+    renderTeam();
+    showToast(
+      action === "block"
+        ? "Oficina bloqueada."
+        : action === "renew"
+          ? "Plano renovado."
+          : "Oficina liberada.",
+    );
   } catch (error) {
     showToast(error.message);
   }
@@ -1459,7 +1567,12 @@ document.querySelectorAll("#reportButton, #sidebarReportButton").forEach((button
   button.addEventListener("click", printReport);
 });
 document.querySelectorAll(".nav-item").forEach((button) => {
-  button.addEventListener("click", () => showSection(button.dataset.section));
+  button.addEventListener("click", () => {
+    if (button.dataset.section === "team" && button.dataset.teamMode) {
+      state.teamMode = button.dataset.teamMode;
+    }
+    showSection(button.dataset.section);
+  });
 });
 document.querySelector("#mobileMenu").addEventListener("click", () => elements.sidebar.classList.toggle("open"));
 document.querySelector("#closeModalButton").addEventListener("click", closeToolModal);

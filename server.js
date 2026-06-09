@@ -115,6 +115,12 @@ function migrateStore(store) {
       changed = true;
     }
   });
+  (store.organizations || []).forEach((organization) => {
+    if (!organization.subscription) {
+      organization.subscription = createSubscription("monthly");
+      changed = true;
+    }
+  });
   if (changed) writeStore(store);
 }
 
@@ -196,6 +202,39 @@ function slugify(value) {
 }
 
 function createOrganization(store, name) {
+  return createOrganizationWithPlan(store, name, "monthly");
+}
+
+function normalizePlan(plan) {
+  return plan === "annual" ? "annual" : "monthly";
+}
+
+function addPlanPeriod(fromDate, plan) {
+  const date = new Date(fromDate);
+  if (normalizePlan(plan) === "annual") {
+    date.setFullYear(date.getFullYear() + 1);
+  } else {
+    date.setMonth(date.getMonth() + 1);
+  }
+  return date.toISOString();
+}
+
+function createSubscription(plan = "monthly") {
+  const cleanPlan = normalizePlan(plan);
+  const now = new Date();
+  return {
+    plan: cleanPlan,
+    status: "active",
+    expiresAt: addPlanPeriod(now, cleanPlan),
+    updatedAt: now.toISOString(),
+  };
+}
+
+function publicOrganizationSubscription(organization) {
+  return organization?.subscription || createSubscription("monthly");
+}
+
+function createOrganizationWithPlan(store, name, plan = "monthly") {
   const id = crypto.randomUUID();
   const baseSlug = slugify(name);
   let slug = baseSlug;
@@ -212,6 +251,7 @@ function createOrganization(store, name) {
       ...createEmptyStore().tv,
       queueSource: "attendance",
     },
+    subscription: createSubscription(plan),
     createdAt: new Date().toISOString(),
   };
   store.organizations ||= [];
@@ -225,6 +265,10 @@ function organizationName(store, organizationId) {
 
 function organizationSlug(store, organizationId) {
   return (store.organizations || []).find((item) => item.id === organizationId)?.slug || "";
+}
+
+function findOrganization(store, organizationId) {
+  return (store.organizations || []).find((item) => item.id === organizationId) || null;
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
@@ -361,14 +405,16 @@ function servicesPayload(store, user) {
 }
 
 function publicTeamUser(user, store) {
+  const organization = findOrganization(store, user.organizationId);
   return {
     id: user.id,
     name: user.name,
     email: user.email,
     role: user.role,
     organizationId: user.organizationId || "",
-    organizationName: organizationName(store, user.organizationId),
-    organizationSlug: organizationSlug(store, user.organizationId),
+    organizationName: organization?.name || "",
+    organizationSlug: organization?.slug || "",
+    organizationSubscription: publicOrganizationSubscription(organization),
     createdAt: user.createdAt,
   };
 }
@@ -418,14 +464,16 @@ function clearSession(response, request) {
 }
 
 function publicUser(user, store = readStore()) {
+  const organization = findOrganization(store, user.organizationId);
   return {
     id: user.id,
     name: user.name,
     email: user.email,
     role: user.role || "manager",
     organizationId: user.organizationId || "",
-    organizationName: organizationName(store, user.organizationId),
-    organizationSlug: organizationSlug(store, user.organizationId),
+    organizationName: organization?.name || "",
+    organizationSlug: organization?.slug || "",
+    organizationSubscription: publicOrganizationSubscription(organization),
     profile: user.profile || {},
   };
 }
@@ -484,6 +532,12 @@ function requireUser(request, response) {
   const user = store.users.find((item) => item.id === session.userId);
   if (!user) {
     sendJson(response, 401, { error: "Sua sessão não é mais válida." });
+    return null;
+  }
+  const organization = findOrganization(store, user.organizationId);
+  if (["manager", "employee"].includes(user.role) && organization?.subscription?.status === "blocked") {
+    sessions.delete(session.token);
+    sendJson(response, 403, { error: "Cadastro da oficina bloqueado. Fale com o gestor do site." });
     return null;
   }
   return { store, user };
@@ -632,6 +686,11 @@ async function handleApi(request, response, pathname) {
       sendJson(response, 401, { error: "E-mail ou senha incorretos." });
       return;
     }
+    const organization = findOrganization(store, user.organizationId);
+    if (["manager", "employee"].includes(user.role) && organization?.subscription?.status === "blocked") {
+      sendJson(response, 403, { error: "Cadastro da oficina bloqueado. Fale com o gestor do site." });
+      return;
+    }
     createSession(response, user.id, request);
     sendJson(response, 200, { user: publicUser(user, store) });
     return;
@@ -733,7 +792,7 @@ async function handleApi(request, response, pathname) {
     if (context.user.role === "owner") {
       role = "manager";
       const organizationName = sanitizeText(body.organizationName, 120) || `${name} Oficina`;
-      const organization = createOrganization(context.store, organizationName);
+      const organization = createOrganizationWithPlan(context.store, organizationName, body.plan);
       organizationId = organization.id;
       profile = { shop: organization.name };
     }
@@ -749,6 +808,50 @@ async function handleApi(request, response, pathname) {
     context.store.users.push(user);
     writeStore(context.store);
     sendJson(response, 201, { user: publicTeamUser(user, context.store) });
+    return;
+  }
+
+  const subscriptionMatch = pathname.match(/^\/api\/organizations\/([^/]+)\/subscription$/);
+  if (request.method === "POST" && subscriptionMatch) {
+    if (context.user.role !== "owner") {
+      sendJson(response, 403, { error: "Apenas o dono do site pode alterar assinaturas." });
+      return;
+    }
+    const organization = findOrganization(context.store, subscriptionMatch[1]);
+    if (!organization) {
+      sendJson(response, 404, { error: "Oficina não encontrada." });
+      return;
+    }
+    const body = await readJsonBody(request);
+    const action = sanitizeText(body.action, 20);
+    organization.subscription ||= createSubscription(body.plan || "monthly");
+    const now = new Date();
+    if (body.plan) organization.subscription.plan = normalizePlan(body.plan);
+
+    if (action === "block") {
+      organization.subscription.status = "blocked";
+    } else if (action === "renew") {
+      organization.subscription.status = "active";
+      const baseDate = organization.subscription.expiresAt && new Date(organization.subscription.expiresAt) > now
+        ? new Date(organization.subscription.expiresAt)
+        : now;
+      organization.subscription.expiresAt = addPlanPeriod(baseDate, organization.subscription.plan);
+    } else if (action === "activate") {
+      organization.subscription.status = "active";
+      if (!organization.subscription.expiresAt || new Date(organization.subscription.expiresAt) < now) {
+        organization.subscription.expiresAt = addPlanPeriod(now, organization.subscription.plan);
+      }
+    } else {
+      sendJson(response, 400, { error: "Ação de assinatura inválida." });
+      return;
+    }
+
+    organization.subscription.updatedAt = now.toISOString();
+    writeStore(context.store);
+    const users = context.store.users
+      .filter((user) => user.role === "manager")
+      .map((user) => publicTeamUser(user, context.store));
+    sendJson(response, 200, { organization, users });
     return;
   }
 

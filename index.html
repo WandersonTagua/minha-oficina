@@ -127,9 +127,13 @@
             <span class="nav-icon">▣</span>
             Painel TV
           </button>
-          <button class="nav-item" data-section="team">
+          <button class="nav-item" data-section="team" data-team-mode="list">
             <span class="nav-icon">☷</span>
-            Equipe/Fila
+            <span id="teamNavLabel">Equipe/Fila</span>
+          </button>
+          <button class="nav-item" data-section="team" data-team-mode="create" data-owner-only>
+            <span class="nav-icon">＋</span>
+            Cadastrar gestor
           </button>
           <button class="nav-item" data-section="attendance">
             <span class="nav-icon">◷</span>
@@ -467,6 +471,13 @@
                   <span>Nome da oficina</span>
                   <input id="organizationName" type="text" placeholder="Ex.: Oficina do Cliente" />
                 </label>
+                <label class="field" id="subscriptionPlanField">
+                  <span>Plano da oficina</span>
+                  <select id="subscriptionPlan">
+                    <option value="monthly">Mensal</option>
+                    <option value="annual">Anual</option>
+                  </select>
+                </label>
               </div>
 
               <div class="form-footer">
@@ -475,12 +486,12 @@
               </div>
             </form>
 
-            <div class="team-panels">
+            <div class="team-panels" id="teamPanels">
               <article class="card team-card">
                 <h3 id="teamListTitle">Usuários cadastrados</h3>
                 <div class="team-list" id="teamList"></div>
               </article>
-              <article class="card team-card">
+              <article class="card team-card" id="managerAttendancePanel">
                 <h3>Fila de presença</h3>
                 <div class="attendance-list" id="managerAttendanceList"></div>
               </article>

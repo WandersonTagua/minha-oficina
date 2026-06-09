@@ -518,6 +518,17 @@ select {
   background: var(--slate-100);
 }
 
+.button-danger {
+  border-color: #f3c7c7;
+  color: var(--danger);
+  background: #fff1f1;
+}
+
+.button-danger:hover {
+  border-color: #e8a8a8;
+  background: #ffe5e5;
+}
+
 .mobile-menu {
   display: none;
 }
@@ -1243,6 +1254,10 @@ select {
   margin-top: 18px;
 }
 
+.team-panels.owner-client-mode {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .team-card {
   padding: 18px;
 }
@@ -1269,6 +1284,86 @@ select {
   border: 1px solid var(--slate-200);
   border-radius: 10px;
   background: var(--paper);
+}
+
+.client-office-card {
+  display: grid;
+  gap: 13px;
+  padding: 14px;
+  border: 1px solid var(--slate-200);
+  border-radius: 14px;
+  background: var(--paper);
+}
+
+.client-office-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 11px;
+  align-items: center;
+}
+
+.client-office-header strong,
+.client-office-header small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-office-header strong {
+  font-size: 12px;
+}
+
+.client-office-header small {
+  margin-top: 3px;
+  color: var(--slate-500);
+  font-size: 10px;
+}
+
+.client-office-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--slate-600);
+  font-size: 10px;
+}
+
+.client-office-details span {
+  padding: 7px 9px;
+  border-radius: 999px;
+  background: var(--white);
+}
+
+.subscription-chip {
+  padding: 6px 8px;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.subscription-chip.is-active {
+  color: #0f7a42;
+  background: #dcf7e8;
+}
+
+.subscription-chip.is-blocked {
+  color: var(--danger);
+  background: #ffe1e1;
+}
+
+.client-office-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.client-office-actions .button {
+  min-height: 34px;
+  padding: 8px 11px;
+  font-size: 10px;
 }
 
 .attendance-row {
@@ -1714,8 +1809,17 @@ select {
   .checkbox-field,
   .playlist-item,
   .team-panels,
-  .team-row {
+  .team-row,
+  .client-office-header {
     grid-template-columns: 1fr;
+  }
+
+  .client-office-actions {
+    justify-content: stretch;
+  }
+
+  .client-office-actions .button {
+    flex: 1;
   }
 
   .tv-form-header {
