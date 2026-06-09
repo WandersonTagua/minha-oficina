@@ -173,7 +173,7 @@ async function sendPushToUser(store, userId, payload) {
       try {
         await webPush.sendNotification(item.subscription, message);
       } catch (error) {
-        if ([404, 410].includes(error.statusCode)) failedEndpoints.add(item.subscription.endpoint);
+        if ([400, 403, 404, 410].includes(error.statusCode)) failedEndpoints.add(item.subscription.endpoint);
       }
     }),
   );
@@ -735,6 +735,7 @@ async function handleApi(request, response, pathname) {
       role: context.user.role,
       subscription,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     });
     writeStore(context.store);
     sendJson(response, 200, { ok: true });

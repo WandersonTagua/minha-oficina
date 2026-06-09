@@ -198,6 +198,13 @@ function urlBase64ToUint8Array(base64String) {
   return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
 }
 
+function samePushKey(currentKey, expectedKey) {
+  if (!currentKey || !expectedKey) return false;
+  const current = new Uint8Array(currentKey);
+  const expected = expectedKey instanceof Uint8Array ? expectedKey : new Uint8Array(expectedKey);
+  return current.length === expected.length && current.every((value, index) => value === expected[index]);
+}
+
 async function getPushPublicKey() {
   if (state.pushPublicKey) return state.pushPublicKey;
   const { publicKey } = await api("/api/push/public-key");
@@ -213,7 +220,7 @@ async function updateNotificationButton() {
 
   if (Notification.permission === "granted") {
     elements.enableNotificationsButton.textContent = "Notificações ativadas";
-    elements.enableNotificationsButton.disabled = true;
+    elements.enableNotificationsButton.disabled = false;
     return;
   }
   if (Notification.permission === "denied") {
@@ -237,22 +244,46 @@ async function enablePushNotifications() {
       showToast("Permissão de notificação não foi liberada.");
       return;
     }
-    const registration = await navigator.serviceWorker.ready;
-    const publicKey = await getPushPublicKey();
-    const subscription =
-      (await registration.pushManager.getSubscription()) ||
-      (await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
-      }));
-    await api("/api/push/subscribe", {
-      method: "POST",
-      body: JSON.stringify({ subscription }),
-    });
+    await syncPushSubscription();
     await updateNotificationButton();
     showToast("Notificações ativadas.");
   } catch (error) {
     showToast(error.message || "Não foi possível ativar as notificações.");
+  }
+}
+
+async function syncPushSubscription() {
+  if (!supportsPushNotifications() || state.user?.role !== "employee" || Notification.permission !== "granted") {
+    return;
+  }
+  const registration = await navigator.serviceWorker.ready;
+  const publicKey = await getPushPublicKey();
+  const applicationServerKey = urlBase64ToUint8Array(publicKey);
+  let subscription = await registration.pushManager.getSubscription();
+
+  if (subscription && !samePushKey(subscription.options?.applicationServerKey, applicationServerKey)) {
+    await subscription.unsubscribe();
+    subscription = null;
+  }
+
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey,
+    });
+  }
+
+  await api("/api/push/subscribe", {
+    method: "POST",
+    body: JSON.stringify({ subscription }),
+  });
+}
+
+async function syncPushSubscriptionQuietly() {
+  try {
+    await syncPushSubscription();
+  } catch {
+    // A tela continua funcionando; o usuário ainda pode tocar em "Notificações ativadas" para tentar novamente.
   }
 }
 
@@ -297,6 +328,7 @@ async function refreshRoleData() {
     renderAttendance();
     renderServices();
     updateNotificationButton();
+    syncPushSubscriptionQuietly();
     showSection("attendance");
     startServicesPolling();
     return;
