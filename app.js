@@ -6,6 +6,7 @@ const state = {
     availableMechanics: [],
     active: [],
     mine: [],
+    history: [],
   },
   profile: {
     name: "",
@@ -62,6 +63,7 @@ const elements = {
   teamSection: document.querySelector("#teamSection"),
   teamNavLabel: document.querySelector("#teamNavLabel"),
   attendanceSection: document.querySelector("#attendanceSection"),
+  serviceHistorySection: document.querySelector("#serviceHistorySection"),
   welcomeName: document.querySelector("#welcomeName"),
   totalTools: document.querySelector("#totalTools"),
   totalValue: document.querySelector("#totalValue"),
@@ -140,6 +142,7 @@ const elements = {
   dispatchTitle: document.querySelector("#dispatchTitle"),
   dispatchNotes: document.querySelector("#dispatchNotes"),
   employeeServicesList: document.querySelector("#employeeServicesList"),
+  serviceHistoryList: document.querySelector("#serviceHistoryList"),
   reportDate: document.querySelector("#reportDate"),
   reportFooterDate: document.querySelector("#reportFooterDate"),
   reportOwner: document.querySelector("#reportOwner"),
@@ -165,7 +168,7 @@ function showAuth(tab = "login") {
   state.user = null;
   state.tools = [];
   state.mechanicTools = [];
-  state.services = { availableMechanics: [], active: [], mine: [] };
+  state.services = { availableMechanics: [], active: [], mine: [], history: [] };
   stopServicesPolling();
   document.body.classList.remove("authenticated");
   document.body.classList.add("auth-pending");
@@ -324,6 +327,7 @@ async function refreshRoleData() {
       availableMechanics: [],
       active: [],
       mine: services.mine || [],
+      history: services.history || [],
     };
     renderAttendance();
     renderServices();
@@ -353,6 +357,7 @@ async function refreshRoleData() {
     availableMechanics: services.availableMechanics || [],
     active: services.active || [],
     mine: services.mine || [],
+    history: services.history || [],
   };
   renderTvPanel();
   renderTeam();
@@ -382,6 +387,15 @@ function formatToday() {
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "long",
   }).format(new Date());
+}
+
+function setServicesFromPayload(services, fallback = state.services) {
+  state.services = {
+    availableMechanics: services.availableMechanics || [],
+    active: services.active || [],
+    mine: services.mine || [],
+    history: services.history || fallback.history || [],
+  };
 }
 
 function createElement(tag, className, text) {
@@ -628,7 +642,7 @@ function setupRoleUi() {
   document.querySelectorAll("[data-section]").forEach((button) => {
     const section = button.dataset.section;
     const managerSections = ["home", "inventory", "profile", "tv", "team"];
-    const employeeSections = ["inventory", "attendance"];
+    const employeeSections = ["inventory", "attendance", "serviceHistory"];
     const ownerSections = ["team"];
     const visible =
       (role === "owner" && ownerSections.includes(section)) ||
@@ -810,6 +824,7 @@ function renderServices(options = {}) {
   renderAvailableMechanics();
   renderActiveServices();
   renderEmployeeServices(options);
+  renderServiceHistory();
 }
 
 function hasServiceFormInProgress() {
@@ -1021,6 +1036,39 @@ function renderEmployeeServices(options = {}) {
       service.status === "pending" ? createPendingServiceCard(service) : createRunningServiceCard(service),
     ),
   );
+}
+
+function createServiceHistoryCard(service) {
+  const card = createServiceSummary(service);
+  card.classList.add("service-history-card");
+  if (service.dashboardPhoto) {
+    const image = document.createElement("img");
+    image.className = "service-photo";
+    image.src = service.dashboardPhoto;
+    image.alt = `Painel do veículo ${service.plate || ""}`;
+    card.append(image);
+  }
+  appendServiceUpdates(card, service);
+  if (service.rejectionReason) {
+    card.append(createElement("p", "service-history-note", `Motivo da rejeição: ${service.rejectionReason}`));
+  }
+  const closedAt = service.finishedAt || service.rejectedAt;
+  if (closedAt) {
+    card.append(createElement("small", "service-meta", `Registrado em ${formatDateTime(closedAt)}`));
+  }
+  return card;
+}
+
+function renderServiceHistory() {
+  if (!elements.serviceHistoryList) return;
+  const history = state.services.history || [];
+  if (!history.length) {
+    elements.serviceHistoryList.replaceChildren(
+      createElement("p", "tool-card-subtitle", "Nenhum serviço finalizado ou rejeitado ainda."),
+    );
+    return;
+  }
+  elements.serviceHistoryList.replaceChildren(...history.map(createServiceHistoryCard));
 }
 
 function openToolModal(tool = null) {
@@ -1326,6 +1374,7 @@ function showSection(sectionName) {
       ? state.teamMode === "create" ? "Cadastrar gestor" : "Clientes/Oficinas"
       : "Equipe/Fila",
     attendance: "Presença",
+    serviceHistory: "Histórico",
   };
   elements.homeSection.classList.toggle("active", sectionName === "home");
   elements.inventorySection.classList.toggle("active", sectionName === "inventory");
@@ -1333,6 +1382,7 @@ function showSection(sectionName) {
   elements.tvSection.classList.toggle("active", sectionName === "tv");
   elements.teamSection.classList.toggle("active", sectionName === "team");
   elements.attendanceSection.classList.toggle("active", sectionName === "attendance");
+  elements.serviceHistorySection.classList.toggle("active", sectionName === "serviceHistory");
   elements.pageTitle.textContent = titles[sectionName] || "Inventário";
   document.querySelectorAll(".nav-item").forEach((button) => {
     const isActiveTeamMode = sectionName === "team" && button.dataset.section === "team"
@@ -1401,11 +1451,10 @@ async function refreshServices() {
     const previousPending = new Set((state.services.mine || []).filter((service) => service.status === "pending").map((service) => service.id));
     const services = await api("/api/services");
     const preserveEmployeeForm = state.user.role === "employee" && hasServiceFormInProgress();
-    state.services = {
-      availableMechanics: services.availableMechanics || [],
-      active: services.active || [],
+    setServicesFromPayload({
+      ...services,
       mine: preserveEmployeeForm ? state.services.mine : services.mine || [],
-    };
+    });
     renderServices();
     const hasNewPending = !preserveEmployeeForm && state.user.role === "employee" && (state.services.mine || []).some(
       (service) => service.status === "pending" && !previousPending.has(service.id),
@@ -1440,11 +1489,7 @@ async function submitDispatchService(event) {
         notes: elements.dispatchNotes.value.trim(),
       }),
     });
-    state.services = {
-      availableMechanics: services.availableMechanics || [],
-      active: services.active || [],
-      mine: [],
-    };
+    setServicesFromPayload(services);
     elements.dispatchServiceForm.reset();
     renderServices();
     showToast("Serviço enviado para o mecânico.");
@@ -1504,11 +1549,7 @@ async function acceptService(event, serviceId) {
         dashboardPhoto,
       }),
     });
-    state.services = {
-      availableMechanics: [],
-      active: [],
-      mine: services.mine || [],
-    };
+    setServicesFromPayload(services);
     state.attendance = await api("/api/attendance");
     renderAttendance();
     renderServices({ forceEmployee: true });
@@ -1535,11 +1576,7 @@ async function rejectService(form, serviceId) {
       method: "POST",
       body: JSON.stringify({ rejectionReason }),
     });
-    state.services = {
-      availableMechanics: [],
-      active: [],
-      mine: services.mine || [],
-    };
+    setServicesFromPayload(services);
     state.attendance = await api("/api/attendance");
     renderAttendance();
     renderServices({ forceEmployee: true });
@@ -1554,11 +1591,7 @@ async function rejectService(form, serviceId) {
 async function finishService(serviceId) {
   try {
     const services = await api(`/api/services/${serviceId}/finish`, { method: "POST" });
-    state.services = {
-      availableMechanics: [],
-      active: [],
-      mine: services.mine || [],
-    };
+    setServicesFromPayload(services);
     state.attendance = await api("/api/attendance");
     renderAttendance();
     renderServices({ forceEmployee: true });
@@ -1571,11 +1604,7 @@ async function finishService(serviceId) {
 async function pauseServiceForApproval(serviceId) {
   try {
     const services = await api(`/api/services/${serviceId}/pause-approval`, { method: "POST" });
-    state.services = {
-      availableMechanics: [],
-      active: [],
-      mine: services.mine || [],
-    };
+    setServicesFromPayload(services);
     state.attendance = await api("/api/attendance");
     renderAttendance();
     renderServices({ forceEmployee: true });
@@ -1603,11 +1632,7 @@ async function submitServiceUpdate(event, serviceId) {
       method: "POST",
       body: JSON.stringify({ observation, photo }),
     });
-    state.services = {
-      availableMechanics: [],
-      active: [],
-      mine: services.mine || [],
-    };
+    setServicesFromPayload(services);
     renderServices({ forceEmployee: true });
     showToast("Atualização salva no serviço.");
   } catch (error) {
@@ -1620,11 +1645,7 @@ async function submitServiceUpdate(event, serviceId) {
 async function resumeService(serviceId) {
   try {
     const services = await api(`/api/services/${serviceId}/resume`, { method: "POST" });
-    state.services = {
-      availableMechanics: [],
-      active: [],
-      mine: services.mine || [],
-    };
+    setServicesFromPayload(services);
     state.attendance = await api("/api/attendance");
     renderAttendance();
     renderServices({ forceEmployee: true });

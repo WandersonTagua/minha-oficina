@@ -578,9 +578,13 @@ function servicesPayload(store, user) {
         .filter((service) => service.mechanicId === user.id && activeServiceStatuses().includes(service.status))
         .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
         .map(publicService),
+      history: services
+        .filter((service) => service.mechanicId === user.id && ["finished", "rejected"].includes(service.status))
+        .sort((a, b) => new Date(b.finishedAt || b.rejectedAt || b.createdAt) - new Date(a.finishedAt || a.rejectedAt || a.createdAt))
+        .map(publicService),
     };
   }
-  return { availableMechanics: [], active: [], mine: [] };
+  return { availableMechanics: [], active: [], mine: [], history: [] };
 }
 
 function publicTeamUser(user, store) {

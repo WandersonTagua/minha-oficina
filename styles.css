@@ -779,6 +779,16 @@ select {
   background: var(--gold-100);
 }
 
+.service-status.finished {
+  color: var(--green-600);
+  background: var(--green-100);
+}
+
+.service-status.rejected {
+  color: var(--danger);
+  background: #ffe1e1;
+}
+
 .service-response-form {
   display: grid;
   gap: 12px;
