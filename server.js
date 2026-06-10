@@ -495,6 +495,10 @@ function attendanceQueue(store, organizationId) {
     .sort((a, b) => new Date(a.checkedInAt) - new Date(b.checkedInAt));
 }
 
+function isUserPresent(store, userId) {
+  return (store.attendance || []).some((entry) => entry.userId === userId && entry.active);
+}
+
 function busyMechanicIds(store, organizationId) {
   return new Set(
     (store.services || [])
@@ -536,6 +540,7 @@ function publicService(service) {
     managerName: service.managerName,
     title: service.title,
     notes: service.notes,
+    mechanicUpdates: service.mechanicUpdates || [],
     status: service.status,
     plate: service.plate || "",
     mileage: service.mileage || "",
@@ -1199,7 +1204,48 @@ async function handleApi(request, response, pathname) {
       service.plate = plate;
       service.mileage = mileage;
       service.dashboardPhoto = dashboardPhoto;
+      service.mechanicUpdates ||= [];
       service.acceptedAt = new Date().toISOString();
+      writeStore(context.store);
+      sendJson(response, 200, servicesPayload(context.store, context.user));
+      return;
+    }
+
+    if (request.method === "POST" && action === "update") {
+      if (context.user.id !== service.mechanicId || service.status !== "running") {
+        sendJson(response, 403, { error: "Este serviço não pode receber atualização agora." });
+        return;
+      }
+      const body = await readJsonBody(request);
+      const observation = sanitizeText(body.observation, 1000);
+      const photo = String(body.photo || "");
+      if (!observation && !photo.startsWith("data:image/")) {
+        sendJson(response, 400, { error: "Adicione uma observação ou uma foto." });
+        return;
+      }
+      service.mechanicUpdates ||= [];
+      service.mechanicUpdates.push({
+        id: crypto.randomUUID(),
+        observation,
+        photo: photo.startsWith("data:image/") ? photo.slice(0, 6_000_000) : "",
+        createdAt: new Date().toISOString(),
+      });
+      writeStore(context.store);
+      sendJson(response, 200, servicesPayload(context.store, context.user));
+      return;
+    }
+
+    if (request.method === "POST" && action === "resume") {
+      if (context.user.id !== service.mechanicId || !["paused", "approval_paused"].includes(service.status)) {
+        sendJson(response, 403, { error: "Este serviço não pode ser retomado agora." });
+        return;
+      }
+      if (!isUserPresent(context.store, context.user.id)) {
+        sendJson(response, 409, { error: "Marque presença para retomar este serviço." });
+        return;
+      }
+      service.status = service.pausedFromStatus || "running";
+      service.resumedAt = new Date().toISOString();
       writeStore(context.store);
       sendJson(response, 200, servicesPayload(context.store, context.user));
       return;

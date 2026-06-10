@@ -785,6 +785,32 @@ select {
   margin-top: 14px;
 }
 
+.service-update-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--slate-200);
+}
+
+.service-updates {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.service-updates > strong {
+  font-family: "Manrope", sans-serif;
+  font-size: 13px;
+}
+
+.service-update-item {
+  padding: 11px;
+  border: 1px solid var(--slate-200);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
 .service-actions {
   display: flex;
   gap: 10px;

@@ -813,14 +813,16 @@ function renderServices(options = {}) {
 }
 
 function hasServiceFormInProgress() {
-  const form = document.querySelector(".service-response-form");
-  if (!form) return false;
-  if (form.contains(document.activeElement)) return true;
-  const plate = form.elements.plate?.value.trim();
-  const mileage = form.elements.mileage?.value.trim();
-  const rejectionReason = form.elements.rejectionReason?.value.trim();
-  const photo = form.elements.dashboardPhoto?.files?.length;
-  return Boolean(plate || mileage || rejectionReason || photo);
+  return [...document.querySelectorAll(".service-response-form, .service-update-form")].some((form) => {
+    if (form.contains(document.activeElement)) return true;
+    const plate = form.elements.plate?.value.trim();
+    const mileage = form.elements.mileage?.value.trim();
+    const rejectionReason = form.elements.rejectionReason?.value.trim();
+    const observation = form.elements.observation?.value.trim();
+    const dashboardPhoto = form.elements.dashboardPhoto?.files?.length;
+    const updatePhoto = form.elements.photo?.files?.length;
+    return Boolean(plate || mileage || rejectionReason || observation || dashboardPhoto || updatePhoto);
+  });
 }
 
 function renderAvailableMechanics() {
@@ -920,11 +922,13 @@ function createPendingServiceCard(service) {
 function createRunningServiceCard(service) {
   const card = createServiceSummary(service);
   if (service.status === "paused") {
-    card.append(createElement("p", "", "Serviço pausado ao encerrar expediente. Marque presença para retomar."));
+    card.append(createElement("p", "", "Serviço pausado ao encerrar expediente. Marque presença e toque em retomar para continuar."));
+    card.append(createResumeServiceActions(service));
     return card;
   }
   if (service.status === "approval_paused") {
     card.append(createElement("p", "", "Serviço pausado aguardando aprovação. Você voltou para o fim da fila."));
+    card.append(createResumeServiceActions(service));
     return card;
   }
   if (service.dashboardPhoto) {
@@ -934,6 +938,8 @@ function createRunningServiceCard(service) {
     image.alt = `Painel do veículo ${service.plate}`;
     card.append(image);
   }
+  appendServiceUpdates(card, service);
+  card.append(createServiceUpdateForm(service));
   const finishButton = createElement("button", "button button-primary", "Encerrar serviço");
   finishButton.type = "button";
   finishButton.addEventListener("click", () => finishService(service.id));
@@ -944,6 +950,60 @@ function createRunningServiceCard(service) {
   actions.append(finishButton, approvalPauseButton);
   card.append(actions);
   return card;
+}
+
+function createResumeServiceActions(service) {
+  const actions = createElement("div", "service-actions");
+  const resumeButton = createElement("button", "button button-primary", "Retomar serviço");
+  resumeButton.type = "button";
+  resumeButton.disabled = !state.attendance.mine;
+  resumeButton.addEventListener("click", () => resumeService(service.id));
+  actions.append(resumeButton);
+  if (!state.attendance.mine) {
+    actions.append(createElement("small", "service-meta", "Marque presença primeiro para liberar o botão."));
+  }
+  return actions;
+}
+
+function appendServiceUpdates(card, service) {
+  const updates = service.mechanicUpdates || [];
+  if (!updates.length) return;
+  const list = createElement("div", "service-updates");
+  list.append(createElement("strong", "", "Fotos e observações"));
+  updates.forEach((update) => {
+    const item = createElement("div", "service-update-item");
+    item.append(createElement("small", "", formatDateTime(update.createdAt)));
+    if (update.observation) item.append(createElement("p", "", update.observation));
+    if (update.photo) {
+      const image = document.createElement("img");
+      image.className = "service-photo";
+      image.src = update.photo;
+      image.alt = "Foto adicionada ao serviço";
+      item.append(image);
+    }
+    list.append(item);
+  });
+  card.append(list);
+}
+
+function createServiceUpdateForm(service) {
+  const form = createElement("form", "service-update-form");
+  form.dataset.serviceId = service.id;
+  form.innerHTML = `
+    <label class="field">
+      <span>Observações do serviço</span>
+      <textarea name="observation" rows="3" placeholder="Ex.: Cliente autorizou troca, peça aguardando, teste realizado..."></textarea>
+    </label>
+    <label class="field">
+      <span>Adicionar foto</span>
+      <input name="photo" type="file" accept="image/*" />
+    </label>
+    <div class="service-actions">
+      <button class="button button-secondary" type="submit">Salvar observação/foto</button>
+    </div>
+  `;
+  form.addEventListener("submit", (event) => submitServiceUpdate(event, service.id));
+  return form;
 }
 
 function renderEmployeeServices(options = {}) {
@@ -1520,6 +1580,55 @@ async function pauseServiceForApproval(serviceId) {
     renderAttendance();
     renderServices({ forceEmployee: true });
     showToast("Serviço pausado para aprovação. Você voltou para o fim da fila.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function submitServiceUpdate(event, serviceId) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (form.dataset.submitting === "true") return;
+  const file = form.elements.photo.files[0];
+  const observation = form.elements.observation.value.trim();
+  if (!file && !observation) {
+    showToast("Adicione uma observação ou uma foto.");
+    return;
+  }
+  form.dataset.submitting = "true";
+  form.querySelectorAll("button").forEach((button) => (button.disabled = true));
+  try {
+    const photo = file ? await compressImage(file) : "";
+    const services = await api(`/api/services/${serviceId}/update`, {
+      method: "POST",
+      body: JSON.stringify({ observation, photo }),
+    });
+    state.services = {
+      availableMechanics: [],
+      active: [],
+      mine: services.mine || [],
+    };
+    renderServices({ forceEmployee: true });
+    showToast("Atualização salva no serviço.");
+  } catch (error) {
+    form.dataset.submitting = "";
+    form.querySelectorAll("button").forEach((button) => (button.disabled = false));
+    showToast(error.message);
+  }
+}
+
+async function resumeService(serviceId) {
+  try {
+    const services = await api(`/api/services/${serviceId}/resume`, { method: "POST" });
+    state.services = {
+      availableMechanics: [],
+      active: [],
+      mine: services.mine || [],
+    };
+    state.attendance = await api("/api/attendance");
+    renderAttendance();
+    renderServices({ forceEmployee: true });
+    showToast("Serviço retomado.");
   } catch (error) {
     showToast(error.message);
   }
