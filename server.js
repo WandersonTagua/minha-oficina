@@ -570,6 +570,10 @@ function servicesPayload(store, user) {
         .filter((service) => activeServiceStatuses().includes(service.status))
         .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
         .map(publicService),
+      all: services
+        .filter((service) => service.plate)
+        .sort((a, b) => new Date(b.finishedAt || b.rejectedAt || b.acceptedAt || b.createdAt) - new Date(a.finishedAt || a.rejectedAt || a.acceptedAt || a.createdAt))
+        .map(publicService),
     };
   }
   if (user.role === "employee") {

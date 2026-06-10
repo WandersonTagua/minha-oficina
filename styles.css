@@ -681,6 +681,10 @@ select {
   grid-column: 1 / -1;
 }
 
+.dispatch-search-card {
+  grid-column: 1 / -1;
+}
+
 .dispatch-card-header {
   display: flex;
   gap: 12px;
@@ -714,6 +718,10 @@ select {
 .service-list {
   display: grid;
   gap: 10px;
+}
+
+.service-search-results {
+  margin-top: 14px;
 }
 
 .service-item {

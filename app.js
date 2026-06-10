@@ -7,6 +7,7 @@ const state = {
     active: [],
     mine: [],
     history: [],
+    all: [],
   },
   profile: {
     name: "",
@@ -141,6 +142,8 @@ const elements = {
   dispatchMechanic: document.querySelector("#dispatchMechanic"),
   dispatchTitle: document.querySelector("#dispatchTitle"),
   dispatchNotes: document.querySelector("#dispatchNotes"),
+  plateSearchInput: document.querySelector("#plateSearchInput"),
+  plateSearchResults: document.querySelector("#plateSearchResults"),
   employeeServicesList: document.querySelector("#employeeServicesList"),
   serviceHistoryList: document.querySelector("#serviceHistoryList"),
   reportDate: document.querySelector("#reportDate"),
@@ -168,7 +171,7 @@ function showAuth(tab = "login") {
   state.user = null;
   state.tools = [];
   state.mechanicTools = [];
-  state.services = { availableMechanics: [], active: [], mine: [], history: [] };
+  state.services = { availableMechanics: [], active: [], mine: [], history: [], all: [] };
   stopServicesPolling();
   document.body.classList.remove("authenticated");
   document.body.classList.add("auth-pending");
@@ -358,6 +361,7 @@ async function refreshRoleData() {
     active: services.active || [],
     mine: services.mine || [],
     history: services.history || [],
+    all: services.all || [],
   };
   renderTvPanel();
   renderTeam();
@@ -395,6 +399,7 @@ function setServicesFromPayload(services, fallback = state.services) {
     active: services.active || [],
     mine: services.mine || [],
     history: services.history || fallback.history || [],
+    all: services.all || fallback.all || [],
   };
 }
 
@@ -823,6 +828,7 @@ function serviceStatusLabel(status) {
 function renderServices(options = {}) {
   renderAvailableMechanics();
   renderActiveServices();
+  renderPlateSearchResults();
   renderEmployeeServices(options);
   renderServiceHistory();
 }
@@ -899,6 +905,42 @@ function renderActiveServices() {
     return;
   }
   elements.activeServicesList.replaceChildren(...services.map(createServiceSummary));
+}
+
+function normalizePlate(value) {
+  return String(value || "").replace(/[^a-z0-9]/gi, "").toLocaleUpperCase("pt-BR");
+}
+
+function createPlateSearchResult(service) {
+  const card = createServiceSummary(service);
+  card.classList.add("service-history-card");
+  const closedAt = service.finishedAt || service.rejectedAt || service.acceptedAt || service.createdAt;
+  if (closedAt) {
+    card.append(createElement("small", "service-meta", `Última atualização: ${formatDateTime(closedAt)}`));
+  }
+  if (service.rejectionReason) {
+    card.append(createElement("p", "service-history-note", `Motivo da rejeição: ${service.rejectionReason}`));
+  }
+  appendServiceUpdates(card, service);
+  return card;
+}
+
+function renderPlateSearchResults() {
+  if (!elements.plateSearchInput || !elements.plateSearchResults) return;
+  if (state.user?.role !== "manager") return;
+  const query = normalizePlate(elements.plateSearchInput.value);
+  if (!query) {
+    elements.plateSearchResults.replaceChildren(
+      createElement("p", "tool-card-subtitle", "Digite uma placa para pesquisar nos serviços da oficina."),
+    );
+    return;
+  }
+  const results = (state.services.all || []).filter((service) => normalizePlate(service.plate).includes(query));
+  if (!results.length) {
+    elements.plateSearchResults.replaceChildren(createElement("p", "tool-card-subtitle", "Nenhum serviço encontrado para essa placa."));
+    return;
+  }
+  elements.plateSearchResults.replaceChildren(...results.map(createPlateSearchResult));
 }
 
 function createPendingServiceCard(service) {
@@ -1763,6 +1805,7 @@ elements.profileForm.addEventListener("submit", submitProfile);
 elements.tvForm.addEventListener("submit", submitTvPanel);
 elements.teamForm.addEventListener("submit", submitTeam);
 elements.dispatchServiceForm.addEventListener("submit", submitDispatchService);
+elements.plateSearchInput.addEventListener("input", renderPlateSearchResults);
 elements.loginForm.addEventListener("submit", submitLogin);
 elements.registerForm.addEventListener("submit", submitRegister);
 elements.loginTab.addEventListener("click", () => switchAuthTab("login"));
