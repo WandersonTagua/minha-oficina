@@ -1,8 +1,8 @@
 {
-  "name": "Minha Oficina - Gestão de Oficina",
+  "name": "Minha Oficina - Gestão de Pátio",
   "short_name": "Minha Oficina",
   "id": "/",
-  "description": "Gestão de oficina, serviços, presença e ferramentas.",
+  "description": "Gestão de pátio, serviços, presença e ferramentas.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

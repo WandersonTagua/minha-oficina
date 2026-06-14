@@ -1,6 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#0d2639"/>
-  <circle cx="256" cy="256" r="174" fill="#123f5d"/>
-  <path fill="#e9a11c" d="M347 124a104 104 0 0 0-118 133L121 365a36 36 0 0 0 51 51l108-108a104 104 0 0 0 133-118l-65 65-58-15-15-58 65-65a104 104 0 0 0-13-3Z"/>
-  <circle cx="147" cy="390" r="15" fill="#0d2639"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Minha Oficina">
+  <defs>
+    <linearGradient id="bg" x1="70" y1="64" x2="442" y2="448" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#091c2c"/>
+      <stop offset="0.6" stop-color="#12364f"/>
+      <stop offset="1" stop-color="#1769aa"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="150" y1="96" x2="384" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffd34f"/>
+      <stop offset="1" stop-color="#e9a11c"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M256 78 386 124 366 356 256 426 146 356 126 124 256 78Z" fill="url(#gold)"/>
+  <path d="M179 164h154v28H179zM179 244h154v28H179z" fill="#091c2c" opacity=".78"/>
+  <circle cx="324" cy="322" r="24" fill="#091c2c" opacity=".78"/>
+  <path d="M256 78 386 124 366 356 256 426 146 356 126 124 256 78Z" fill="none" stroke="#fff2d7" stroke-opacity=".5" stroke-width="10"/>
 </svg>

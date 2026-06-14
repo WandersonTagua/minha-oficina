@@ -272,7 +272,6 @@ select {
   border-radius: 50%;
   background: rgba(9, 28, 44, 0.72);
 }
-}
 
 .brand strong,
 .brand small,
@@ -1672,16 +1671,21 @@ select {
 .attendance-hero-symbol {
   width: 62px;
   height: 62px;
-  display: grid;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 18px;
-  color: var(--navy-950);
-  background: var(--gold-500);
-  font-family: "Manrope", sans-serif;
   font-size: 17px;
-  font-weight: 900;
   box-shadow: 0 16px 34px rgba(0, 0, 0, 0.16);
+}
+
+.attendance-hero-symbol::before {
+  inset: 11px 14px auto;
+  height: 4px;
+  box-shadow: 0 12px 0 rgba(9, 28, 44, 0.48);
+}
+
+.attendance-hero-symbol::after {
+  right: 14px;
+  bottom: 12px;
+  width: 8px;
+  height: 8px;
 }
 
 .attendance-mobile h2 {
