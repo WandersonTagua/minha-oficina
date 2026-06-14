@@ -945,6 +945,26 @@ function createServiceSummary(service) {
   return item;
 }
 
+function createServicePhotoToggle(src, label) {
+  const wrapper = createElement("div", "service-photo-toggle");
+  const button = createElement("button", "service-photo-thumb", label);
+  button.type = "button";
+  button.setAttribute("aria-expanded", "false");
+  const image = document.createElement("img");
+  image.className = "service-photo";
+  image.src = src;
+  image.alt = label;
+  image.hidden = true;
+  button.addEventListener("click", () => {
+    const expanded = image.hidden;
+    image.hidden = !expanded;
+    button.textContent = expanded ? "Ocultar foto" : label;
+    button.setAttribute("aria-expanded", String(expanded));
+  });
+  wrapper.append(button, image);
+  return wrapper;
+}
+
 function renderActiveServices() {
   if (!elements.activeServicesList) return;
   const services = state.services.active || [];
@@ -1039,11 +1059,7 @@ function createRunningServiceCard(service) {
     return card;
   }
   if (service.dashboardPhoto) {
-    const image = document.createElement("img");
-    image.className = "service-photo";
-    image.src = service.dashboardPhoto;
-    image.alt = `Painel do veículo ${service.plate}`;
-    card.append(image);
+    card.append(createServicePhotoToggle(service.dashboardPhoto, `Ver foto do painel ${service.plate || ""}`.trim()));
   }
   appendServiceUpdates(card, service);
   card.append(createServiceUpdateForm(service));
@@ -1082,11 +1098,7 @@ function appendServiceUpdates(card, service) {
     item.append(createElement("small", "", formatDateTime(update.createdAt)));
     if (update.observation) item.append(createElement("p", "", update.observation));
     if (update.photo) {
-      const image = document.createElement("img");
-      image.className = "service-photo";
-      image.src = update.photo;
-      image.alt = "Foto adicionada ao serviço";
-      item.append(image);
+      item.append(createServicePhotoToggle(update.photo, "Ver foto adicionada"));
     }
     list.append(item);
   });
@@ -1134,11 +1146,7 @@ function createServiceHistoryCard(service) {
   const card = createServiceSummary(service);
   card.classList.add("service-history-card");
   if (service.dashboardPhoto) {
-    const image = document.createElement("img");
-    image.className = "service-photo";
-    image.src = service.dashboardPhoto;
-    image.alt = `Painel do veículo ${service.plate || ""}`;
-    card.append(image);
+    card.append(createServicePhotoToggle(service.dashboardPhoto, `Ver foto do painel ${service.plate || ""}`.trim()));
   }
   appendServiceUpdates(card, service);
   if (service.rejectionReason) {
