@@ -100,11 +100,9 @@ const elements = {
   profileSavedMessage: document.querySelector("#profileSavedMessage"),
   tvForm: document.querySelector("#tvForm"),
   tvMechanic: document.querySelector("#tvMechanic"),
-  tvQueue: document.querySelector("#tvQueue"),
   tvNotice: document.querySelector("#tvNotice"),
   tvHighlight: document.querySelector("#tvHighlight"),
   tvAudioMuted: document.querySelector("#tvAudioMuted"),
-  tvQueueSource: document.querySelector("#tvQueueSource"),
   tvSavedMessage: document.querySelector("#tvSavedMessage"),
   openTvButton: document.querySelector("#openTvButton"),
   youtubeUrl: document.querySelector("#youtubeUrl"),
@@ -608,11 +606,9 @@ function renderAll() {
 
 function renderTvPanel() {
   elements.tvMechanic.value = state.tv.mechanic || "";
-  elements.tvQueue.value = (state.tv.queue || []).join("\n");
   elements.tvNotice.value = state.tv.notice || "";
   elements.tvHighlight.value = state.tv.highlight || "";
   elements.tvAudioMuted.checked = state.tv.audioMuted !== false;
-  elements.tvQueueSource.value = state.tv.queueSource || "manual";
   renderPlaylist();
 }
 
@@ -1257,14 +1253,11 @@ async function submitTvPanel(event) {
   state.tv = {
     ...state.tv,
     mechanic: elements.tvMechanic.value.trim(),
-    queue: elements.tvQueue.value
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean),
+    queue: [],
     notice: elements.tvNotice.value.trim(),
     highlight: elements.tvHighlight.value.trim(),
     audioMuted: elements.tvAudioMuted.checked,
-    queueSource: elements.tvQueueSource.value,
+    queueSource: "attendance",
     playlist: state.tv.playlist || [],
   };
 

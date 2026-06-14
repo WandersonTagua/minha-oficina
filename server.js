@@ -780,7 +780,7 @@ function cleanTvSettings(body, existing = {}) {
     notice: sanitizeText(body.notice, 300),
     highlight: sanitizeText(body.highlight, 180),
     audioMuted: body.audioMuted !== false,
-    queueSource: ["attendance", "services"].includes(body.queueSource) ? body.queueSource : "manual",
+    queueSource: ["attendance", "services"].includes(body.queueSource) ? body.queueSource : "attendance",
     playlist,
     updatedAt: new Date().toISOString(),
     createdAt: existing.createdAt || new Date().toISOString(),
