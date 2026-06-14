@@ -26,6 +26,7 @@ const state = {
   },
   team: [],
   teamMode: "list",
+  profileEditing: false,
   attendance: {
     queue: [],
     mine: null,
@@ -93,6 +94,15 @@ const elements = {
   photoPicker: document.querySelector(".photo-picker"),
   photoImage: document.querySelector("#photoImage"),
   profileForm: document.querySelector("#profileForm"),
+  profileView: document.querySelector("#profileView"),
+  profileEditButton: document.querySelector("#profileEditButton"),
+  profileSectionTitle: document.querySelector("#profileSectionTitle"),
+  profileSectionSubtitle: document.querySelector("#profileSectionSubtitle"),
+  profileViewName: document.querySelector("#profileViewName"),
+  profileViewShop: document.querySelector("#profileViewShop"),
+  profileViewSpecialty: document.querySelector("#profileViewSpecialty"),
+  profileViewPhone: document.querySelector("#profileViewPhone"),
+  profileViewEmail: document.querySelector("#profileViewEmail"),
   profileName: document.querySelector("#profileName"),
   profileSpecialty: document.querySelector("#profileSpecialty"),
   profilePhone: document.querySelector("#profilePhone"),
@@ -170,6 +180,7 @@ function showAuth(tab = "login") {
   state.tools = [];
   state.mechanicTools = [];
   state.services = { availableMechanics: [], active: [], mine: [], history: [], all: [] };
+  state.profileEditing = false;
   stopServicesPolling();
   document.body.classList.remove("authenticated");
   document.body.classList.add("auth-pending");
@@ -178,11 +189,11 @@ function showAuth(tab = "login") {
 
 function showAuthenticated(user) {
   state.user = user;
-  state.profile = user.profile || {
-    name: user.name,
-    specialty: "",
-    phone: "",
-    shop: "",
+  state.profile = {
+    name: user.profile?.name || user.name || "",
+    specialty: user.profile?.specialty || "",
+    phone: user.profile?.phone || "",
+    shop: user.profile?.shop || user.organizationName || "",
   };
   elements.accountName.textContent = user.name;
   elements.accountEmail.textContent = user.email;
@@ -1219,10 +1230,29 @@ async function deleteTool(id) {
 }
 
 function renderProfile() {
+  const role = state.user?.role || "employee";
+  elements.profileSectionTitle.textContent = role === "manager" ? "Dados do gestor" : "Meus dados";
+  elements.profileSectionSubtitle.textContent = role === "manager"
+    ? "Informações vinculadas à oficina cadastrada pelo dono do site."
+    : "Estas informações ficam vinculadas ao seu cadastro.";
+
+  elements.profileViewName.textContent = state.profile.name || state.user?.name || "Nome não informado";
+  elements.profileViewShop.textContent = state.profile.shop || state.user?.organizationName || "Oficina não informada";
+  elements.profileViewSpecialty.textContent = state.profile.specialty || "Não informada";
+  elements.profileViewPhone.textContent = state.profile.phone || "Não informado";
+  elements.profileViewEmail.textContent = state.user?.email || "Não informado";
+
   elements.profileName.value = state.profile.name || "";
   elements.profileSpecialty.value = state.profile.specialty || "";
   elements.profilePhone.value = state.profile.phone || "";
   elements.profileShop.value = state.profile.shop || "";
+  setProfileEditMode(state.profileEditing);
+}
+
+function setProfileEditMode(editing) {
+  state.profileEditing = editing;
+  elements.profileView.hidden = editing;
+  elements.profileForm.hidden = !editing;
 }
 
 async function submitProfile(event) {
@@ -1240,8 +1270,11 @@ async function submitProfile(event) {
     });
     state.profile = user.profile;
     showAuthenticated(user);
+    setProfileEditMode(false);
+    renderProfile();
     renderStats();
     elements.profileSavedMessage.textContent = "Dados salvos com sucesso.";
+    showToast("Dados salvos com sucesso.");
     setTimeout(() => (elements.profileSavedMessage.textContent = ""), 2600);
   } catch (error) {
     showToast(error.message);
@@ -1799,6 +1832,7 @@ elements.tvForm.addEventListener("submit", submitTvPanel);
 elements.teamForm.addEventListener("submit", submitTeam);
 elements.dispatchServiceForm.addEventListener("submit", submitDispatchService);
 elements.plateSearchInput.addEventListener("input", renderPlateSearchResults);
+elements.profileEditButton.addEventListener("click", () => setProfileEditMode(true));
 elements.loginForm.addEventListener("submit", submitLogin);
 elements.registerForm.addEventListener("submit", submitRegister);
 elements.loginTab.addEventListener("click", () => switchAuthTab("login"));

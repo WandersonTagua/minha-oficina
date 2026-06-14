@@ -290,7 +290,9 @@ select {
 .nav-item[hidden],
 .sidebar-card[hidden],
 .button[hidden],
-.field[hidden] {
+.field[hidden],
+.profile-form[hidden],
+.profile-summary-card[hidden] {
   display: none;
 }
 
@@ -1155,6 +1157,62 @@ select {
   padding: 27px;
 }
 
+.profile-summary-card {
+  display: grid;
+  gap: 18px;
+  padding: 27px;
+}
+
+.profile-summary-header {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--slate-100);
+}
+
+.profile-summary-header h3 {
+  margin: 0;
+  font-family: "Manrope", sans-serif;
+  font-size: 18px;
+}
+
+.profile-summary-header p {
+  margin: 4px 0 0;
+  color: var(--slate-500);
+  font-size: 12px;
+}
+
+.profile-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.profile-summary-grid span {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--slate-200);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.profile-summary-grid b {
+  color: var(--slate-700);
+  font-size: 10px;
+}
+
+.profile-summary-grid small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--slate-900);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tv-form-header {
   display: flex;
   gap: 14px;
@@ -1823,6 +1881,7 @@ select {
   .tools-grid,
   .dispatch-grid,
   .dispatch-form,
+  .profile-summary-grid,
   .form-grid {
     grid-template-columns: 1fr;
   }

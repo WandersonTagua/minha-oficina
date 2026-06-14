@@ -340,10 +340,33 @@
           <div class="profile-layout">
             <div class="section-intro">
               <span class="eyebrow">IDENTIFICAÇÃO</span>
-              <h2>Dados do mecânico</h2>
-              <p>Estas informações aparecerão no cabeçalho do seu relatório.</p>
+              <h2 id="profileSectionTitle">Meus dados</h2>
+              <p id="profileSectionSubtitle">Estas informações ficam vinculadas ao seu cadastro.</p>
             </div>
-            <form class="profile-form card" id="profileForm">
+            <article class="profile-summary-card card" id="profileView">
+              <div class="profile-summary-header">
+                <div>
+                  <h3 id="profileViewName">Nome</h3>
+                  <p id="profileViewShop">Oficina</p>
+                </div>
+                <button class="icon-button" id="profileEditButton" type="button" aria-label="Editar meus dados">✎</button>
+              </div>
+              <div class="profile-summary-grid">
+                <span>
+                  <b>Especialidade</b>
+                  <small id="profileViewSpecialty">Não informada</small>
+                </span>
+                <span>
+                  <b>Telefone</b>
+                  <small id="profileViewPhone">Não informado</small>
+                </span>
+                <span>
+                  <b>E-mail</b>
+                  <small id="profileViewEmail">Não informado</small>
+                </span>
+              </div>
+            </article>
+            <form class="profile-form card" id="profileForm" hidden>
               <div class="form-grid">
                 <label class="field field-wide">
                   <span>Nome completo</span>
