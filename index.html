@@ -479,8 +479,40 @@
                   <input id="teamPassword" type="password" minlength="8" placeholder="Mínimo de 8 caracteres" required />
                 </label>
                 <label class="field" id="organizationField">
-                  <span>Nome da oficina</span>
+                  <span>Nome fantasia / oficina</span>
                   <input id="organizationName" type="text" placeholder="Ex.: Oficina do Cliente" />
+                </label>
+                <label class="field" id="organizationLegalNameField">
+                  <span>Razão social</span>
+                  <input id="organizationLegalName" type="text" placeholder="Ex.: Oficina do Cliente Ltda." />
+                </label>
+                <label class="field" id="organizationCnpjField">
+                  <span>CNPJ</span>
+                  <input id="organizationCnpj" type="text" inputmode="numeric" placeholder="00.000.000/0000-00" />
+                </label>
+                <label class="field" id="organizationPhoneField">
+                  <span>Telefone comercial</span>
+                  <input id="organizationPhone" type="tel" placeholder="(00) 00000-0000" />
+                </label>
+                <label class="field" id="organizationEmailField">
+                  <span>E-mail comercial</span>
+                  <input id="organizationEmail" type="email" placeholder="contato@oficina.com" />
+                </label>
+                <label class="field field-wide" id="organizationAddressField">
+                  <span>Endereço da oficina</span>
+                  <input id="organizationAddress" type="text" placeholder="Rua, número, bairro" />
+                </label>
+                <label class="field" id="organizationCityField">
+                  <span>Cidade</span>
+                  <input id="organizationCity" type="text" placeholder="Cidade" />
+                </label>
+                <label class="field" id="organizationStateField">
+                  <span>UF</span>
+                  <input id="organizationState" type="text" maxlength="2" placeholder="SP" />
+                </label>
+                <label class="field field-wide" id="organizationLogoField">
+                  <span>Logotipo da oficina</span>
+                  <input id="organizationLogo" type="file" accept="image/*" />
                 </label>
                 <label class="field" id="subscriptionPlanField">
                   <span>Plano da oficina</span>
@@ -489,6 +521,29 @@
                     <option value="annual">Anual</option>
                   </select>
                 </label>
+                <label class="checkbox-field field-wide" id="organizationTermsField">
+                  <input id="organizationTermsAccepted" type="checkbox" />
+                  <span>Li e aceito os termos de uso e tratamento de dados da plataforma.</span>
+                  <small>O gestor será responsável pelo uso correto do sistema, pelas informações cadastradas e pela orientação dos colaboradores.</small>
+                </label>
+                <details class="terms-box field-wide" id="organizationTermsBox">
+                  <summary>Ver termos de uso resumidos</summary>
+                  <p>
+                    A Minha Oficina é uma plataforma de gestão de pátio, fila, serviços e inventário. O gestor da oficina
+                    declara que possui autorização para cadastrar dados da empresa e colaboradores, comprometendo-se a usar
+                    o sistema para fins profissionais e lícitos.
+                  </p>
+                  <p>
+                    Os dados pessoais serão tratados para autenticação, controle de presença, despacho de serviços,
+                    histórico operacional, notificações e suporte da assinatura, observando princípios da LGPD como
+                    finalidade, necessidade, segurança, transparência e correção dos dados.
+                  </p>
+                  <p>
+                    O gestor deve manter CNPJ e dados cadastrais atualizados, proteger as credenciais de acesso e solicitar
+                    correções ou exclusões quando necessário. Fotos, placas, quilometragem e registros de serviço devem ser
+                    usados apenas para documentação da ordem de serviço da oficina.
+                  </p>
+                </details>
               </div>
 
               <div class="form-footer">

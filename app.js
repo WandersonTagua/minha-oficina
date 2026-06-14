@@ -123,6 +123,25 @@ const elements = {
   teamPassword: document.querySelector("#teamPassword"),
   organizationField: document.querySelector("#organizationField"),
   organizationName: document.querySelector("#organizationName"),
+  organizationLegalNameField: document.querySelector("#organizationLegalNameField"),
+  organizationLegalName: document.querySelector("#organizationLegalName"),
+  organizationCnpjField: document.querySelector("#organizationCnpjField"),
+  organizationCnpj: document.querySelector("#organizationCnpj"),
+  organizationPhoneField: document.querySelector("#organizationPhoneField"),
+  organizationPhone: document.querySelector("#organizationPhone"),
+  organizationEmailField: document.querySelector("#organizationEmailField"),
+  organizationEmail: document.querySelector("#organizationEmail"),
+  organizationAddressField: document.querySelector("#organizationAddressField"),
+  organizationAddress: document.querySelector("#organizationAddress"),
+  organizationCityField: document.querySelector("#organizationCityField"),
+  organizationCity: document.querySelector("#organizationCity"),
+  organizationStateField: document.querySelector("#organizationStateField"),
+  organizationState: document.querySelector("#organizationState"),
+  organizationLogoField: document.querySelector("#organizationLogoField"),
+  organizationLogo: document.querySelector("#organizationLogo"),
+  organizationTermsField: document.querySelector("#organizationTermsField"),
+  organizationTermsAccepted: document.querySelector("#organizationTermsAccepted"),
+  organizationTermsBox: document.querySelector("#organizationTermsBox"),
   subscriptionPlanField: document.querySelector("#subscriptionPlanField"),
   subscriptionPlan: document.querySelector("#subscriptionPlan"),
   teamPanels: document.querySelector("#teamPanels"),
@@ -198,6 +217,23 @@ function showAuthenticated(user) {
   elements.accountAvatar.textContent = user.name?.charAt(0).toLocaleUpperCase("pt-BR") || "M";
   document.body.classList.remove("auth-pending");
   document.body.classList.add("authenticated");
+  renderOrganizationBrand();
+}
+
+function renderOrganizationBrand() {
+  const logo = state.user?.organizationLogo || "";
+  document.querySelectorAll(".app-shell .brand-mark, .report .brand-mark").forEach((mark) => {
+    mark.classList.toggle("has-logo", Boolean(logo));
+    mark.replaceChildren();
+    if (logo) {
+      const image = document.createElement("img");
+      image.src = logo;
+      image.alt = state.user?.organizationName || "Logotipo da oficina";
+      mark.append(image);
+    } else {
+      mark.append(createElement("span", "", "MO"));
+    }
+  });
 }
 
 function supportsPushNotifications() {
@@ -678,8 +714,7 @@ function setupRoleUi() {
   document.querySelector('[data-section="attendance"]').style.order = role === "employee" ? "-1" : "";
   document.querySelector('[data-section="inventory"]').style.order = role === "employee" ? "1" : "";
 
-  elements.organizationField.hidden = role !== "owner";
-  elements.subscriptionPlanField.hidden = role !== "owner";
+  setOrganizationRegistrationFieldsVisible(role === "owner");
   elements.topbarEyebrow.textContent =
     role === "owner" ? "GESTÃO DO SITE" : role === "manager" ? "GESTÃO DA OFICINA" : "PAINEL DO MECÂNICO";
   elements.teamFormTitle.textContent = role === "owner" ? "Cadastrar gestor" : "Cadastrar colaborador";
@@ -696,6 +731,25 @@ function setupRoleUi() {
   document.querySelector("#sidebarReportButton").hidden = role !== "manager";
   document.querySelector(".sidebar-card").hidden = role !== "manager";
   updateTeamLayout();
+}
+
+function setOrganizationRegistrationFieldsVisible(visible) {
+  [
+    elements.organizationField,
+    elements.organizationLegalNameField,
+    elements.organizationCnpjField,
+    elements.organizationPhoneField,
+    elements.organizationEmailField,
+    elements.organizationAddressField,
+    elements.organizationCityField,
+    elements.organizationStateField,
+    elements.organizationLogoField,
+    elements.subscriptionPlanField,
+    elements.organizationTermsField,
+    elements.organizationTermsBox,
+  ].forEach((field) => {
+    if (field) field.hidden = !visible;
+  });
 }
 
 function setTeamFormCollapsed(collapsed) {
@@ -769,19 +823,39 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
+function onlyDigits(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function formatCnpj(value) {
+  const digits = onlyDigits(value);
+  if (digits.length !== 14) return digits;
+  return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+}
+
 function createOwnerClientCard(user) {
   const subscription = user.organizationSubscription || {};
   const row = createElement("div", "client-office-card");
   const header = createElement("div", "client-office-header");
   const avatar = createElement("span", "account-avatar", user.organizationName.charAt(0).toLocaleUpperCase("pt-BR") || user.name.charAt(0).toLocaleUpperCase("pt-BR"));
+  if (user.organizationLogo) {
+    const logo = document.createElement("img");
+    logo.src = user.organizationLogo;
+    logo.alt = `Logo ${user.organizationName || user.name}`;
+    avatar.classList.add("has-logo");
+    avatar.replaceChildren(logo);
+  }
   const info = document.createElement("div");
   info.append(createElement("strong", "", user.organizationName || "Oficina sem nome"));
-  info.append(createElement("small", "", `${user.name} · ${user.email}`));
+  info.append(createElement("small", "", `${user.organizationLegalName || user.name} · ${user.email}`));
   const status = createElement("span", `subscription-chip ${subscription.status === "blocked" ? "is-blocked" : "is-active"}`, statusLabel(subscription.status));
   header.append(avatar, info, status);
 
   const details = createElement("div", "client-office-details");
   details.append(
+    createElement("span", "", `CNPJ: ${formatCnpj(user.organizationCnpj) || "Não informado"}`),
+    createElement("span", "", `Contato: ${user.organizationPhone || user.organizationEmail || "Não informado"}`),
+    createElement("span", "", `Cidade/UF: ${[user.organizationCity, user.organizationState].filter(Boolean).join("/") || "Não informado"}`),
     createElement("span", "", `Plano: ${planLabel(subscription.plan)}`),
     createElement("span", "", `Vence em: ${formatDate(subscription.expiresAt)}`),
   );
@@ -1532,13 +1606,48 @@ function showSection(sectionName) {
 async function submitTeam(event) {
   event.preventDefault();
   try {
+    const isOwner = state.user.role === "owner";
+    if (isOwner && !elements.organizationName.value.trim()) {
+      showToast("Informe o nome fantasia da oficina.");
+      return;
+    }
+    if (isOwner && !elements.organizationLegalName.value.trim()) {
+      showToast("Informe a razão social da oficina.");
+      return;
+    }
+    if (isOwner && onlyDigits(elements.organizationCnpj.value).length !== 14) {
+      showToast("Informe um CNPJ válido com 14 dígitos.");
+      return;
+    }
+    if (isOwner && !elements.organizationPhone.value.trim() && !elements.organizationEmail.value.trim()) {
+      showToast("Informe telefone ou e-mail comercial da oficina.");
+      return;
+    }
+    if (isOwner && (!elements.organizationAddress.value.trim() || !elements.organizationCity.value.trim() || !elements.organizationState.value.trim())) {
+      showToast("Informe endereço, cidade e UF da oficina.");
+      return;
+    }
+    if (isOwner && !elements.organizationTermsAccepted.checked) {
+      showToast("Aceite os termos de uso para cadastrar a oficina.");
+      return;
+    }
+    const logoFile = isOwner ? elements.organizationLogo.files[0] : null;
     const body = {
       name: elements.teamName.value.trim(),
       email: elements.teamEmail.value.trim(),
       password: elements.teamPassword.value,
       organizationName: elements.organizationName.value.trim(),
+      organizationLegalName: elements.organizationLegalName.value.trim(),
+      organizationCnpj: onlyDigits(elements.organizationCnpj.value),
+      organizationPhone: elements.organizationPhone.value.trim(),
+      organizationEmail: elements.organizationEmail.value.trim(),
+      organizationAddress: elements.organizationAddress.value.trim(),
+      organizationCity: elements.organizationCity.value.trim(),
+      organizationState: elements.organizationState.value.trim().toLocaleUpperCase("pt-BR"),
+      organizationTermsAccepted: elements.organizationTermsAccepted.checked,
       plan: elements.subscriptionPlan.value,
     };
+    if (logoFile) body.organizationLogo = await compressImage(logoFile);
     const { user } = await api("/api/team", {
       method: "POST",
       body: JSON.stringify(body),

@@ -121,6 +121,18 @@ function migrateStore(store) {
       organization.subscription = createSubscription("monthly");
       changed = true;
     }
+    if (organization.legalName === undefined) {
+      organization.legalName = "";
+      organization.cnpj = "";
+      organization.phone = "";
+      organization.email = "";
+      organization.address = "";
+      organization.city = "";
+      organization.state = "";
+      organization.logo = "";
+      organization.terms = { accepted: false, acceptedAt: "", version: "" };
+      changed = true;
+    }
     if (!organization.location) {
       organization.location = { latitude: null, longitude: null, radiusMeters: 150 };
       changed = true;
@@ -196,6 +208,16 @@ function sanitizeText(value, maxLength = 200) {
   return String(value || "").trim().slice(0, maxLength);
 }
 
+function onlyDigits(value, maxLength = 30) {
+  return String(value || "").replace(/\D/g, "").slice(0, maxLength);
+}
+
+function sanitizeImageDataUrl(value) {
+  const text = String(value || "");
+  if (!/^data:image\/(png|jpe?g|webp);base64,/i.test(text)) return "";
+  return text.length <= 1_500_000 ? text : "";
+}
+
 function slugify(value) {
   const base = sanitizeText(value, 80)
     .normalize("NFD")
@@ -239,7 +261,7 @@ function publicOrganizationSubscription(organization) {
   return organization?.subscription || createSubscription("monthly");
 }
 
-function createOrganizationWithPlan(store, name, plan = "monthly") {
+function createOrganizationWithPlan(store, name, plan = "monthly", details = {}) {
   const id = crypto.randomUUID();
   const baseSlug = slugify(name);
   let slug = baseSlug;
@@ -251,6 +273,19 @@ function createOrganizationWithPlan(store, name, plan = "monthly") {
   const organization = {
     id,
     name: sanitizeText(name, 120) || "Oficina",
+    legalName: sanitizeText(details.legalName, 160),
+    cnpj: onlyDigits(details.cnpj, 14),
+    phone: sanitizeText(details.phone, 30),
+    email: normalizeEmail(details.email),
+    address: sanitizeText(details.address, 220),
+    city: sanitizeText(details.city, 80),
+    state: sanitizeText(details.state, 2).toLocaleUpperCase("pt-BR"),
+    logo: sanitizeImageDataUrl(details.logo),
+    terms: {
+      accepted: Boolean(details.termsAccepted),
+      acceptedAt: details.termsAccepted ? new Date().toISOString() : "",
+      version: details.termsAccepted ? "2026-06-14" : "",
+    },
     slug,
     tv: {
       ...createEmptyStore().tv,
@@ -636,6 +671,15 @@ function publicTeamUser(user, store) {
     role: user.role,
     organizationId: user.organizationId || "",
     organizationName: organization?.name || "",
+    organizationLegalName: organization?.legalName || "",
+    organizationCnpj: organization?.cnpj || "",
+    organizationPhone: organization?.phone || "",
+    organizationEmail: organization?.email || "",
+    organizationAddress: organization?.address || "",
+    organizationCity: organization?.city || "",
+    organizationState: organization?.state || "",
+    organizationLogo: organization?.logo || "",
+    organizationTerms: organization?.terms || { accepted: false, acceptedAt: "", version: "" },
     organizationSlug: organization?.slug || "",
     organizationSubscription: publicOrganizationSubscription(organization),
     createdAt: user.createdAt,
@@ -695,6 +739,8 @@ function publicUser(user, store = readStore()) {
     role: user.role || "manager",
     organizationId: user.organizationId || "",
     organizationName: organization?.name || "",
+    organizationLegalName: organization?.legalName || "",
+    organizationLogo: organization?.logo || "",
     organizationSlug: organization?.slug || "",
     organizationSubscription: publicOrganizationSubscription(organization),
     organizationLocation: publicOrganizationLocation(organization),
@@ -989,7 +1035,48 @@ async function handleApi(request, response, pathname) {
     if (context.user.role === "owner") {
       role = "manager";
       const organizationName = sanitizeText(body.organizationName, 120) || `${name} Oficina`;
-      const organization = createOrganizationWithPlan(context.store, organizationName, body.plan);
+      const legalName = sanitizeText(body.organizationLegalName, 160);
+      const phone = sanitizeText(body.organizationPhone, 30);
+      const commercialEmail = normalizeEmail(body.organizationEmail);
+      const address = sanitizeText(body.organizationAddress, 220);
+      const city = sanitizeText(body.organizationCity, 80);
+      const state = sanitizeText(body.organizationState, 2).toLocaleUpperCase("pt-BR");
+      if (!organizationName || !legalName) {
+        sendJson(response, 400, { error: "Informe nome fantasia e razão social da oficina." });
+        return;
+      }
+      const organizationCnpj = onlyDigits(body.organizationCnpj, 14);
+      if (organizationCnpj.length !== 14) {
+        sendJson(response, 400, { error: "Informe o CNPJ da oficina com 14 dígitos." });
+        return;
+      }
+      if (!phone && !commercialEmail) {
+        sendJson(response, 400, { error: "Informe telefone ou e-mail comercial da oficina." });
+        return;
+      }
+      if (!address || !city || state.length !== 2) {
+        sendJson(response, 400, { error: "Informe endereço, cidade e UF da oficina." });
+        return;
+      }
+      if ((context.store.organizations || []).some((organization) => organization.cnpj === organizationCnpj)) {
+        sendJson(response, 409, { error: "Já existe uma oficina cadastrada com este CNPJ." });
+        return;
+      }
+      if (!body.organizationTermsAccepted) {
+        sendJson(response, 400, { error: "Aceite os termos de uso para cadastrar a oficina." });
+        return;
+      }
+      const organization = createOrganizationWithPlan(context.store, organizationName, body.plan, {
+        legalName,
+        cnpj: organizationCnpj,
+        phone,
+        email: commercialEmail,
+        address,
+        city,
+        state,
+        logo: body.organizationLogo,
+        termsAccepted: true,
+      });
       organizationId = organization.id;
       profile = { shop: organization.name };
     }
