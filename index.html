@@ -137,7 +137,7 @@
           </button>
           <button class="nav-item" data-section="attendance">
             <span class="nav-icon">◷</span>
-            Presença
+            Início
           </button>
           <button class="nav-item" data-section="serviceHistory">
             <span class="nav-icon">▤</span>
@@ -543,18 +543,28 @@
 
         <section class="page-section" id="attendanceSection">
           <div class="attendance-mobile">
-            <span class="eyebrow">PONTO DA OFICINA</span>
-            <h2>Marcar presença</h2>
-            <p id="attendanceStatusText">Entre na fila quando chegar à oficina.</p>
-            <button class="button button-primary attendance-button" id="checkInButton" type="button">
-              Marcar presença
-            </button>
-            <button class="button button-secondary attendance-button" id="checkOutButton" type="button" hidden>
-              Sair da fila
-            </button>
-            <button class="button button-secondary attendance-button" id="enableNotificationsButton" type="button" hidden>
-              Ativar notificações
-            </button>
+            <div class="attendance-hero">
+              <div>
+                <span class="eyebrow eyebrow-light">INÍCIO DO EXPEDIENTE</span>
+                <h2>Olá, mecânico</h2>
+                <p>Marque sua chegada para entrar automaticamente na fila da oficina.</p>
+              </div>
+              <span class="attendance-hero-symbol">MO</span>
+            </div>
+            <div class="card team-card attendance-control-card">
+              <span class="eyebrow">CONTROLE DE PRESENÇA</span>
+              <h3>Começar atendimento</h3>
+              <p id="attendanceStatusText">Entre na fila quando chegar à oficina.</p>
+              <button class="button button-primary attendance-button" id="checkInButton" type="button">
+                Marcar presença
+              </button>
+              <button class="button button-secondary attendance-button" id="checkOutButton" type="button" hidden>
+                Sair da fila
+              </button>
+              <button class="button button-secondary attendance-button" id="enableNotificationsButton" type="button" hidden>
+                Ativar notificações
+              </button>
+            </div>
             <div class="card team-card">
               <h3>Fila atual</h3>
               <div class="attendance-list" id="employeeAttendanceList"></div>

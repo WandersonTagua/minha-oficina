@@ -1,4 +1,4 @@
-const CACHE_NAME = "minha-oficina-shell-v15";
+const CACHE_NAME = "minha-oficina-shell-v16";
 const APP_SHELL = [
   "/",
   "/index.html",

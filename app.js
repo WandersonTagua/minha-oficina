@@ -1524,7 +1524,7 @@ function showSection(sectionName) {
     team: state.user?.role === "owner"
       ? state.teamMode === "create" ? "Cadastrar gestor" : "Clientes/Oficinas"
       : "Equipe/Fila",
-    attendance: "Presença",
+    attendance: "Início",
     serviceHistory: "Histórico",
   };
   elements.homeSection.classList.toggle("active", sectionName === "home");

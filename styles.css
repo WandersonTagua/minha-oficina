@@ -1625,6 +1625,52 @@ select {
   margin: 25px auto;
 }
 
+.attendance-hero {
+  min-height: 138px;
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  justify-content: space-between;
+  overflow: hidden;
+  margin-bottom: 16px;
+  padding: 24px;
+  border-radius: var(--radius);
+  color: var(--white);
+  background:
+    radial-gradient(circle at 88% 18%, rgba(233, 161, 28, 0.3), transparent 30%),
+    linear-gradient(135deg, var(--navy-950), var(--navy-800) 58%, var(--blue-600));
+  box-shadow: var(--shadow);
+}
+
+.attendance-hero h2 {
+  margin: 7px 0 6px;
+  color: var(--white);
+  font-size: 26px;
+}
+
+.attendance-hero p {
+  max-width: 330px;
+  margin: 0;
+  color: #c4d8e4;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.attendance-hero-symbol {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 18px;
+  color: var(--navy-950);
+  background: var(--gold-500);
+  font-family: "Manrope", sans-serif;
+  font-size: 17px;
+  font-weight: 900;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.16);
+}
+
 .attendance-mobile h2 {
   margin: 5px 0 6px;
   font-family: "Manrope", sans-serif;
@@ -1640,6 +1686,25 @@ select {
 .attendance-button {
   width: 100%;
   margin-bottom: 10px;
+}
+
+.attendance-control-card {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.attendance-control-card h3 {
+  margin: 0;
+  font-family: "Manrope", sans-serif;
+  font-size: 18px;
+}
+
+.attendance-control-card p {
+  margin: 0 0 8px;
+  color: var(--slate-500);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .form-grid {
