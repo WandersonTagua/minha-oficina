@@ -107,6 +107,11 @@ const elements = {
   profileSpecialty: document.querySelector("#profileSpecialty"),
   profilePhone: document.querySelector("#profilePhone"),
   profileShop: document.querySelector("#profileShop"),
+  workshopLocationField: document.querySelector("#workshopLocationField"),
+  useWorkshopLocationButton: document.querySelector("#useWorkshopLocationButton"),
+  workshopLocationText: document.querySelector("#workshopLocationText"),
+  workshopLatitude: document.querySelector("#workshopLatitude"),
+  workshopLongitude: document.querySelector("#workshopLongitude"),
   profileSavedMessage: document.querySelector("#profileSavedMessage"),
   tvForm: document.querySelector("#tvForm"),
   tvMechanic: document.querySelector("#tvMechanic"),
@@ -218,6 +223,30 @@ function samePushKey(currentKey, expectedKey) {
   const current = new Uint8Array(currentKey);
   const expected = expectedKey instanceof Uint8Array ? expectedKey : new Uint8Array(expectedKey);
   return current.length === expected.length && current.every((value, index) => value === expected[index]);
+}
+
+function getCurrentPosition(options = {}) {
+  return new Promise((resolve, reject) => {
+    if (!("geolocation" in navigator)) {
+      reject(new Error("Este celular não suporta localização."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 30000,
+      ...options,
+    });
+  });
+}
+
+function locationText(location) {
+  const latitude = Number(location?.latitude);
+  const longitude = Number(location?.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return "Nenhuma localização cadastrada. Raio padrão: 150m.";
+  }
+  return `Localização cadastrada (${latitude.toFixed(5)}, ${longitude.toFixed(5)}). Raio: 150m.`;
 }
 
 async function getPushPublicKey() {
@@ -1241,6 +1270,11 @@ function renderProfile() {
   elements.profileViewSpecialty.textContent = state.profile.specialty || "Não informada";
   elements.profileViewPhone.textContent = state.profile.phone || "Não informado";
   elements.profileViewEmail.textContent = state.user?.email || "Não informado";
+  const location = state.user?.organizationLocation || {};
+  elements.workshopLocationField.hidden = role !== "manager";
+  elements.workshopLatitude.value = Number.isFinite(Number(location.latitude)) ? location.latitude : "";
+  elements.workshopLongitude.value = Number.isFinite(Number(location.longitude)) ? location.longitude : "";
+  elements.workshopLocationText.textContent = locationText(location);
 
   elements.profileName.value = state.profile.name || "";
   elements.profileSpecialty.value = state.profile.specialty || "";
@@ -1255,6 +1289,31 @@ function setProfileEditMode(editing) {
   elements.profileForm.hidden = !editing;
 }
 
+async function useWorkshopCurrentLocation() {
+  try {
+    elements.useWorkshopLocationButton.disabled = true;
+    elements.workshopLocationText.textContent = "Obtendo localização...";
+    const position = await getCurrentPosition();
+    const location = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      radiusMeters: 150,
+    };
+    elements.workshopLatitude.value = String(location.latitude);
+    elements.workshopLongitude.value = String(location.longitude);
+    elements.workshopLocationText.textContent = locationText(location);
+    showToast("Localização da oficina capturada. Salve os dados para confirmar.");
+  } catch (error) {
+    elements.workshopLocationText.textContent = locationText({
+      latitude: elements.workshopLatitude.value,
+      longitude: elements.workshopLongitude.value,
+    });
+    showToast(error.message || "Não foi possível obter a localização.");
+  } finally {
+    elements.useWorkshopLocationButton.disabled = false;
+  }
+}
+
 async function submitProfile(event) {
   event.preventDefault();
   const profile = {
@@ -1262,6 +1321,8 @@ async function submitProfile(event) {
     specialty: elements.profileSpecialty.value.trim(),
     phone: elements.profilePhone.value.trim(),
     shop: elements.profileShop.value.trim(),
+    workshopLatitude: elements.workshopLatitude.value,
+    workshopLongitude: elements.workshopLongitude.value,
   };
   try {
     const { user } = await api("/api/profile", {
@@ -1568,12 +1629,20 @@ async function submitDispatchService(event) {
 
 async function checkIn() {
   try {
-    state.attendance = await api("/api/attendance/check-in", { method: "POST" });
+    showToast("Verificando localização...");
+    const position = await getCurrentPosition();
+    state.attendance = await api("/api/attendance/check-in", {
+      method: "POST",
+      body: JSON.stringify({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      }),
+    });
     renderAttendance();
     await refreshServices();
     showToast("Presença marcada. Você entrou na fila.");
   } catch (error) {
-    showToast(error.message);
+    showToast(error.message || "Não foi possível verificar sua localização.");
   }
 }
 
@@ -1833,6 +1902,7 @@ elements.teamForm.addEventListener("submit", submitTeam);
 elements.dispatchServiceForm.addEventListener("submit", submitDispatchService);
 elements.plateSearchInput.addEventListener("input", renderPlateSearchResults);
 elements.profileEditButton.addEventListener("click", () => setProfileEditMode(true));
+elements.useWorkshopLocationButton.addEventListener("click", useWorkshopCurrentLocation);
 elements.loginForm.addEventListener("submit", submitLogin);
 elements.registerForm.addEventListener("submit", submitRegister);
 elements.loginTab.addEventListener("click", () => switchAuthTab("login"));

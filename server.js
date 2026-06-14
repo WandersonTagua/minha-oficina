@@ -121,6 +121,10 @@ function migrateStore(store) {
       organization.subscription = createSubscription("monthly");
       changed = true;
     }
+    if (!organization.location) {
+      organization.location = { latitude: null, longitude: null, radiusMeters: 150 };
+      changed = true;
+    }
   });
   if (changed) writeStore(store);
 }
@@ -252,6 +256,11 @@ function createOrganizationWithPlan(store, name, plan = "monthly") {
       ...createEmptyStore().tv,
       queueSource: "attendance",
     },
+    location: {
+      latitude: null,
+      longitude: null,
+      radiusMeters: 150,
+    },
     subscription: createSubscription(plan),
     createdAt: new Date().toISOString(),
   };
@@ -270,6 +279,33 @@ function organizationSlug(store, organizationId) {
 
 function findOrganization(store, organizationId) {
   return (store.organizations || []).find((item) => item.id === organizationId) || null;
+}
+
+function normalizeCoordinate(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function distanceInMeters(from, to) {
+  const earthRadius = 6371000;
+  const toRadians = (value) => (value * Math.PI) / 180;
+  const lat1 = toRadians(from.latitude);
+  const lat2 = toRadians(to.latitude);
+  const deltaLat = toRadians(to.latitude - from.latitude);
+  const deltaLon = toRadians(to.longitude - from.longitude);
+  const a = Math.sin(deltaLat / 2) ** 2
+    + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
+  return 2 * earthRadius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function publicOrganizationLocation(organization) {
+  const location = organization?.location || {};
+  return {
+    latitude: normalizeCoordinate(location.latitude),
+    longitude: normalizeCoordinate(location.longitude),
+    radiusMeters: Number(location.radiusMeters || 150),
+  };
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
@@ -661,6 +697,7 @@ function publicUser(user, store = readStore()) {
     organizationName: organization?.name || "",
     organizationSlug: organization?.slug || "",
     organizationSubscription: publicOrganizationSubscription(organization),
+    organizationLocation: publicOrganizationLocation(organization),
     profile: user.profile || {},
   };
 }
@@ -1073,6 +1110,28 @@ async function handleApi(request, response, pathname) {
       sendJson(response, 400, { error: "Usuário sem oficina vinculada." });
       return;
     }
+    const body = await readJsonBody(request);
+    const organization = findOrganization(context.store, context.user.organizationId);
+    const workshopLocation = publicOrganizationLocation(organization);
+    if (workshopLocation.latitude === null || workshopLocation.longitude === null) {
+      sendJson(response, 400, { error: "O gestor precisa cadastrar a localização da oficina antes da presença." });
+      return;
+    }
+    const currentLocation = {
+      latitude: normalizeCoordinate(body.latitude),
+      longitude: normalizeCoordinate(body.longitude),
+    };
+    if (currentLocation.latitude === null || currentLocation.longitude === null) {
+      sendJson(response, 400, { error: "Envie sua localização para marcar presença." });
+      return;
+    }
+    const distance = distanceInMeters(currentLocation, workshopLocation);
+    if (distance > workshopLocation.radiusMeters) {
+      sendJson(response, 403, {
+        error: `Você precisa estar na oficina para marcar presença. Distância aproximada: ${Math.round(distance)}m.`,
+      });
+      return;
+    }
     context.store.attendance ||= [];
     const existing = context.store.attendance.find(
       (entry) => entry.userId === context.user.id && entry.active,
@@ -1422,6 +1481,20 @@ async function handleApi(request, response, pathname) {
       shop: sanitizeText(body.shop, 120),
     };
     context.user.name = context.user.profile.name;
+    if (context.user.role === "manager" && context.user.organizationId) {
+      const organization = findOrganization(context.store, context.user.organizationId);
+      if (organization) {
+        const latitude = normalizeCoordinate(body.workshopLatitude);
+        const longitude = normalizeCoordinate(body.workshopLongitude);
+        organization.name = context.user.profile.shop || organization.name;
+        organization.location ||= { latitude: null, longitude: null, radiusMeters: 150 };
+        if (latitude !== null && longitude !== null) {
+          organization.location.latitude = latitude;
+          organization.location.longitude = longitude;
+        }
+        organization.location.radiusMeters = 150;
+      }
+    }
     writeStore(context.store);
     sendJson(response, 200, { user: publicUser(context.user) });
     return;

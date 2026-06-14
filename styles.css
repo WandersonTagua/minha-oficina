@@ -1213,6 +1213,23 @@ select {
   white-space: nowrap;
 }
 
+.location-config {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border: 1px solid var(--slate-200);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.location-config small {
+  color: var(--slate-600);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .tv-form-header {
   display: flex;
   gap: 14px;
@@ -1911,6 +1928,7 @@ select {
   .tv-form-header,
   .tv-media-actions,
   .checkbox-field,
+  .location-config,
   .playlist-item,
   .team-panels,
   .team-row,

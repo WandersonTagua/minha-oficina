@@ -384,6 +384,17 @@
                   <span>Oficina ou empresa</span>
                   <input id="profileShop" name="shop" type="text" placeholder="Nome da oficina" />
                 </label>
+                <div class="field field-wide" id="workshopLocationField">
+                  <span>Localização da oficina</span>
+                  <div class="location-config">
+                    <button class="button button-secondary" id="useWorkshopLocationButton" type="button">
+                      Usar minha localização atual
+                    </button>
+                    <small id="workshopLocationText">Nenhuma localização cadastrada.</small>
+                  </div>
+                  <input id="workshopLatitude" type="hidden" />
+                  <input id="workshopLongitude" type="hidden" />
+                </div>
               </div>
               <div class="form-footer">
                 <span id="profileSavedMessage"></span>
