@@ -25,7 +25,9 @@ const state = {
     playlist: [],
   },
   team: [],
+  registrationInvites: [],
   teamMode: "list",
+  inviteToken: "",
   profileEditing: false,
   attendance: {
     queue: [],
@@ -39,9 +41,25 @@ const state = {
 
 const elements = {
   loginForm: document.querySelector("#loginForm"),
+  authCard: document.querySelector(".auth-card"),
+  inviteRegisterForm: document.querySelector("#inviteRegisterForm"),
   loginEmail: document.querySelector("#loginEmail"),
   loginPassword: document.querySelector("#loginPassword"),
   loginError: document.querySelector("#loginError"),
+  inviteRegisterError: document.querySelector("#inviteRegisterError"),
+  inviteManagerName: document.querySelector("#inviteManagerName"),
+  inviteManagerEmail: document.querySelector("#inviteManagerEmail"),
+  inviteManagerPassword: document.querySelector("#inviteManagerPassword"),
+  inviteOrganizationName: document.querySelector("#inviteOrganizationName"),
+  inviteOrganizationLegalName: document.querySelector("#inviteOrganizationLegalName"),
+  inviteOrganizationCnpj: document.querySelector("#inviteOrganizationCnpj"),
+  inviteOrganizationPhone: document.querySelector("#inviteOrganizationPhone"),
+  inviteOrganizationEmail: document.querySelector("#inviteOrganizationEmail"),
+  inviteOrganizationAddress: document.querySelector("#inviteOrganizationAddress"),
+  inviteOrganizationCity: document.querySelector("#inviteOrganizationCity"),
+  inviteOrganizationState: document.querySelector("#inviteOrganizationState"),
+  inviteOrganizationLogo: document.querySelector("#inviteOrganizationLogo"),
+  inviteTermsAccepted: document.querySelector("#inviteTermsAccepted"),
   installButton: document.querySelector("#installButton"),
   logoutButton: document.querySelector("#logoutButton"),
   accountName: document.querySelector("#accountName"),
@@ -151,6 +169,10 @@ const elements = {
   teamFormTitle: document.querySelector("#teamFormTitle"),
   teamFormHelp: document.querySelector("#teamFormHelp"),
   teamFormToggleButton: document.querySelector("#teamFormToggleButton"),
+  ownerInviteBox: document.querySelector("#ownerInviteBox"),
+  inviteLinkBox: document.querySelector("#inviteLinkBox"),
+  generatedInviteLink: document.querySelector("#generatedInviteLink"),
+  copyInviteLinkButton: document.querySelector("#copyInviteLinkButton"),
   teamSubmitButton: document.querySelector("#teamSubmitButton"),
   teamSavedMessage: document.querySelector("#teamSavedMessage"),
   teamListTitle: document.querySelector("#teamListTitle"),
@@ -202,6 +224,21 @@ function showAuth() {
   document.body.classList.remove("authenticated");
   document.body.classList.add("auth-pending");
   elements.loginError.textContent = "";
+  showInviteRegister(Boolean(state.inviteToken));
+}
+
+function findInviteTokenFromUrl() {
+  const pathMatch = window.location.pathname.match(/^\/cadastro\/([^/]+)$/);
+  if (pathMatch) return decodeURIComponent(pathMatch[1]);
+  return new URLSearchParams(window.location.search).get("convite") || "";
+}
+
+function showInviteRegister(show) {
+  elements.authCard.classList.toggle("auth-invite-card", show);
+  elements.loginForm.hidden = show;
+  elements.loginForm.classList.toggle("active", !show);
+  elements.inviteRegisterForm.hidden = !show;
+  elements.inviteRegisterForm.classList.toggle("active", show);
 }
 
 function showAuthenticated(user) {
@@ -361,6 +398,11 @@ async function syncPushSubscriptionQuietly() {
 }
 
 async function loadApp() {
+  state.inviteToken = findInviteTokenFromUrl();
+  if (state.inviteToken) {
+    showAuth();
+    return;
+  }
   try {
     const { user } = await api("/api/auth/me");
     showAuthenticated(user);
@@ -412,6 +454,7 @@ async function refreshRoleData() {
   state.mechanicTools = mechanicTools;
   state.tv = tv;
   state.team = team.users || [];
+  state.registrationInvites = team.invites || [];
   state.attendance = attendance;
   state.services = {
     availableMechanics: services.availableMechanics || [],
@@ -717,10 +760,10 @@ function setupRoleUi() {
   setOrganizationRegistrationFieldsVisible(role === "owner");
   elements.topbarEyebrow.textContent =
     role === "owner" ? "GESTÃO DO SITE" : role === "manager" ? "GESTÃO DA OFICINA" : "PAINEL DO MECÂNICO";
-  elements.teamFormTitle.textContent = role === "owner" ? "Cadastrar gestor" : "Cadastrar colaborador";
+  elements.teamFormTitle.textContent = role === "owner" ? "Gerar link de cadastro" : "Cadastrar colaborador";
   elements.teamFormHelp.textContent =
     role === "owner"
-      ? "Defina a oficina, o plano e o acesso inicial do gestor."
+      ? "O cliente preencherá os dados cadastrais e aguardará sua liberação."
       : "O colaborador usará o celular para marcar presença.";
   elements.teamSubmitButton.textContent = role === "owner" ? "Cadastrar gestor" : "Cadastrar colaborador";
   elements.teamFormToggleButton.hidden = role === "owner";
@@ -759,6 +802,16 @@ function setTeamFormCollapsed(collapsed) {
   elements.teamFormToggleButton.setAttribute("aria-expanded", String(!collapsed));
 }
 
+function setOwnerInviteMode(active) {
+  elements.ownerInviteBox.hidden = !active;
+  const formGrid = elements.teamForm.querySelector(".form-grid");
+  formGrid.hidden = active;
+  formGrid.querySelectorAll("input, select, textarea").forEach((field) => {
+    field.disabled = active;
+  });
+  elements.teamForm.querySelector(".form-footer").hidden = active;
+}
+
 function toggleTeamForm() {
   setTeamFormCollapsed(!elements.teamForm.classList.contains("is-collapsed"));
 }
@@ -774,7 +827,11 @@ function renderTeam() {
     return;
   }
   if (state.user?.role === "owner") {
-    elements.teamList.replaceChildren(...state.team.map(createOwnerClientCard));
+    const pendingCards = (state.registrationInvites || [])
+      .filter((invite) => invite.status === "submitted")
+      .map(createPendingInviteCard);
+    const clientCards = state.team.map(createOwnerClientCard);
+    elements.teamList.replaceChildren(...pendingCards, ...clientCards);
     return;
   }
   elements.teamList.replaceChildren(
@@ -791,26 +848,72 @@ function renderTeam() {
   );
 }
 
+function createPendingInviteCard(invite) {
+  const submission = invite.submission || {};
+  const row = createElement("div", "client-office-card pending-office-card");
+  const header = createElement("div", "client-office-header");
+  const avatar = createElement("span", "account-avatar", submission.organizationName?.charAt(0).toLocaleUpperCase("pt-BR") || "P");
+  if (submission.organizationLogo) {
+    const logo = document.createElement("img");
+    logo.src = submission.organizationLogo;
+    logo.alt = `Logo ${submission.organizationName || "oficina"}`;
+    avatar.classList.add("has-logo");
+    avatar.replaceChildren(logo);
+  }
+  const info = document.createElement("div");
+  info.append(createElement("strong", "", submission.organizationName || "Cadastro pendente"));
+  info.append(createElement("small", "", `${submission.managerName || "Gestor"} · ${submission.managerEmail || ""}`));
+  header.append(avatar, info, createElement("span", "subscription-chip is-pending", "Pendente"));
+
+  const details = createElement("div", "client-office-details");
+  details.append(
+    createElement("span", "", `CNPJ: ${formatCnpj(submission.organizationCnpj) || "Não informado"}`),
+    createElement("span", "", `Contato: ${submission.organizationPhone || submission.organizationEmail || "Não informado"}`),
+    createElement("span", "", `Cidade/UF: ${[submission.organizationCity, submission.organizationState].filter(Boolean).join("/") || "Não informado"}`),
+    createElement("span", "", `Enviado em: ${formatDate(invite.submittedAt)}`),
+  );
+
+  const actions = createElement("div", "client-office-actions");
+  const trialButton = createElement("button", "button button-secondary", "Liberar teste 7 dias");
+  const monthlyButton = createElement("button", "button button-primary", "Liberar mensal");
+  const annualButton = createElement("button", "button button-secondary", "Liberar anual");
+  const rejectButton = createElement("button", "button button-danger", "Rejeitar");
+  [
+    [trialButton, "trial"],
+    [monthlyButton, "monthly"],
+    [annualButton, "annual"],
+    [rejectButton, "reject"],
+  ].forEach(([button, action]) => {
+    button.type = "button";
+    button.addEventListener("click", () => approveRegistrationInvite(invite.id, action));
+  });
+  actions.append(trialButton, monthlyButton, annualButton, rejectButton);
+  row.append(header, details, actions);
+  return row;
+}
+
 function updateTeamLayout() {
   const role = state.user?.role || "employee";
   const isOwner = role === "owner";
   const isCreateMode = isOwner && state.teamMode === "create";
   elements.teamForm.hidden = isOwner ? !isCreateMode : false;
+  setOwnerInviteMode(isOwner && isCreateMode);
   elements.teamPanels.hidden = isOwner ? isCreateMode : false;
   elements.teamPanels.classList.toggle("owner-client-mode", isOwner);
   elements.managerAttendancePanel.hidden = isOwner;
   elements.teamTitle.textContent = isOwner
-    ? isCreateMode ? "Cadastrar gestor" : "Clientes/Oficinas"
+    ? isCreateMode ? "Gerar link de cadastro" : "Clientes/Oficinas"
     : "Colaboradores e fila";
   elements.teamSubtitle.textContent = isOwner
     ? isCreateMode
-      ? "Crie o acesso do gestor e escolha o plano inicial da oficina."
+      ? "Envie o link para o cliente preencher os dados da oficina e aceitar os termos."
       : "Gerencie oficinas, planos de assinatura e acesso dos gestores."
     : "Cadastre colaboradores e acompanhe a ordem de chegada.";
   elements.teamListTitle.textContent = isOwner ? "Gestores cadastrados" : "Colaboradores cadastrados";
 }
 
 function planLabel(plan) {
+  if (plan === "trial") return "Teste 7 dias";
   return plan === "annual" ? "Anual" : "Mensal";
 }
 
@@ -1606,6 +1709,10 @@ function showSection(sectionName) {
 async function submitTeam(event) {
   event.preventDefault();
   try {
+    if (state.user.role === "owner") {
+      await createRegistrationInvite();
+      return;
+    }
     const isOwner = state.user.role === "owner";
     if (isOwner && !elements.organizationName.value.trim()) {
       showToast("Informe o nome fantasia da oficina.");
@@ -1664,6 +1771,82 @@ async function submitTeam(event) {
     elements.teamSavedMessage.textContent =
       state.user.role === "owner" ? "Gestor cadastrado." : "Colaborador cadastrado.";
     setTimeout(() => (elements.teamSavedMessage.textContent = ""), 2600);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function createRegistrationInvite() {
+  const data = await api("/api/registration-invites", { method: "POST", body: JSON.stringify({}) });
+  const link = data.link || `${window.location.origin}/cadastro/${data.invite.token}`;
+  elements.generatedInviteLink.value = link;
+  elements.inviteLinkBox.hidden = false;
+  elements.teamSavedMessage.textContent = "Link gerado. Envie para o cliente preencher o cadastro.";
+  setTimeout(() => (elements.teamSavedMessage.textContent = ""), 3600);
+}
+
+async function copyInviteLink() {
+  const value = elements.generatedInviteLink.value;
+  if (!value) return;
+  await navigator.clipboard?.writeText(value);
+  showToast("Link copiado.");
+}
+
+async function submitInviteRegistration(event) {
+  event.preventDefault();
+  elements.inviteRegisterError.textContent = "";
+  try {
+    if (!state.inviteToken) throw new Error("Link de cadastro inválido.");
+    if (onlyDigits(elements.inviteOrganizationCnpj.value).length !== 14) {
+      throw new Error("Informe um CNPJ válido com 14 dígitos.");
+    }
+    if (!elements.inviteOrganizationPhone.value.trim() && !elements.inviteOrganizationEmail.value.trim()) {
+      throw new Error("Informe telefone ou e-mail comercial da oficina.");
+    }
+    if (!elements.inviteTermsAccepted.checked) {
+      throw new Error("Aceite os termos de uso para enviar o cadastro.");
+    }
+    const logoFile = elements.inviteOrganizationLogo.files[0];
+    const body = {
+      managerName: elements.inviteManagerName.value.trim(),
+      managerEmail: elements.inviteManagerEmail.value.trim(),
+      managerPassword: elements.inviteManagerPassword.value,
+      organizationName: elements.inviteOrganizationName.value.trim(),
+      organizationLegalName: elements.inviteOrganizationLegalName.value.trim(),
+      organizationCnpj: onlyDigits(elements.inviteOrganizationCnpj.value),
+      organizationPhone: elements.inviteOrganizationPhone.value.trim(),
+      organizationEmail: elements.inviteOrganizationEmail.value.trim(),
+      organizationAddress: elements.inviteOrganizationAddress.value.trim(),
+      organizationCity: elements.inviteOrganizationCity.value.trim(),
+      organizationState: elements.inviteOrganizationState.value.trim().toLocaleUpperCase("pt-BR"),
+      organizationTermsAccepted: elements.inviteTermsAccepted.checked,
+    };
+    if (logoFile) body.organizationLogo = await compressImage(logoFile);
+    await api(`/api/registration-invites/${encodeURIComponent(state.inviteToken)}/submit`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    elements.inviteRegisterForm.reset();
+    elements.inviteRegisterForm.replaceChildren(
+      createElement("div", "", ""),
+      createElement("h2", "", "Cadastro enviado"),
+      createElement("p", "", "Recebemos os dados da oficina. Aguarde a liberação final do responsável pela plataforma."),
+    );
+  } catch (error) {
+    elements.inviteRegisterError.textContent = error.message;
+  }
+}
+
+async function approveRegistrationInvite(inviteId, action) {
+  try {
+    const data = await api(`/api/registration-invites/${inviteId}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    });
+    state.team = data.users || state.team;
+    state.registrationInvites = data.invites || state.registrationInvites;
+    renderTeam();
+    showToast(action === "reject" ? "Cadastro rejeitado." : "Cadastro liberado.");
   } catch (error) {
     showToast(error.message);
   }
@@ -1995,6 +2178,8 @@ elements.plateSearchInput.addEventListener("input", renderPlateSearchResults);
 elements.profileEditButton.addEventListener("click", () => setProfileEditMode(true));
 elements.useWorkshopLocationButton.addEventListener("click", useWorkshopCurrentLocation);
 elements.loginForm.addEventListener("submit", submitLogin);
+elements.inviteRegisterForm.addEventListener("submit", submitInviteRegistration);
+elements.copyInviteLinkButton.addEventListener("click", copyInviteLink);
 elements.logoutButton.addEventListener("click", logout);
 elements.installButton.addEventListener("click", installApp);
 elements.enableNotificationsButton.addEventListener("click", enablePushNotifications);

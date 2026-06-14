@@ -65,6 +65,76 @@
             <p class="form-error" id="loginError"></p>
             <button class="button button-primary auth-submit" type="submit">Entrar na minha conta</button>
           </form>
+          <form class="auth-form" id="inviteRegisterForm" hidden>
+            <div>
+              <span class="eyebrow">CADASTRO DA OFICINA</span>
+              <h2>Complete seu cadastro</h2>
+              <p>Preencha os dados da empresa para aprovação final do acesso.</p>
+            </div>
+            <div class="form-grid">
+              <label class="field">
+                <span>Nome do gestor</span>
+                <input id="inviteManagerName" type="text" placeholder="Nome completo" required />
+              </label>
+              <label class="field">
+                <span>E-mail de acesso</span>
+                <input id="inviteManagerEmail" type="email" placeholder="gestor@oficina.com" required />
+              </label>
+              <label class="field field-wide">
+                <span>Senha de acesso</span>
+                <input id="inviteManagerPassword" type="password" minlength="8" placeholder="Mínimo de 8 caracteres" required />
+              </label>
+              <label class="field">
+                <span>Nome fantasia / oficina</span>
+                <input id="inviteOrganizationName" type="text" placeholder="Ex.: Oficina do Cliente" required />
+              </label>
+              <label class="field">
+                <span>Razão social</span>
+                <input id="inviteOrganizationLegalName" type="text" placeholder="Ex.: Oficina do Cliente Ltda." required />
+              </label>
+              <label class="field">
+                <span>CNPJ</span>
+                <input id="inviteOrganizationCnpj" type="text" inputmode="numeric" placeholder="00.000.000/0000-00" required />
+              </label>
+              <label class="field">
+                <span>Telefone comercial</span>
+                <input id="inviteOrganizationPhone" type="tel" placeholder="(00) 00000-0000" />
+              </label>
+              <label class="field">
+                <span>E-mail comercial</span>
+                <input id="inviteOrganizationEmail" type="email" placeholder="contato@oficina.com" />
+              </label>
+              <label class="field field-wide">
+                <span>Endereço da oficina</span>
+                <input id="inviteOrganizationAddress" type="text" placeholder="Rua, número, bairro" required />
+              </label>
+              <label class="field">
+                <span>Cidade</span>
+                <input id="inviteOrganizationCity" type="text" placeholder="Cidade" required />
+              </label>
+              <label class="field">
+                <span>UF</span>
+                <input id="inviteOrganizationState" type="text" maxlength="2" placeholder="SP" required />
+              </label>
+              <label class="field field-wide">
+                <span>Logotipo da oficina</span>
+                <input id="inviteOrganizationLogo" type="file" accept="image/*" />
+              </label>
+              <label class="checkbox-field field-wide">
+                <input id="inviteTermsAccepted" type="checkbox" required />
+                <span>Li e aceito os termos de uso e tratamento de dados da plataforma.</span>
+                <small>As informações serão enviadas para aprovação final do responsável pela plataforma.</small>
+              </label>
+              <details class="terms-box field-wide">
+                <summary>Ver termos de uso resumidos</summary>
+                <p>A Minha Oficina é uma plataforma de gestão de pátio, fila, serviços e inventário para uso profissional da oficina.</p>
+                <p>Os dados serão tratados para cadastro, autenticação, controle operacional, notificações e suporte, conforme princípios da LGPD.</p>
+                <p>O gestor declara ter autorização para cadastrar dados da empresa e orientar colaboradores sobre o uso correto do sistema.</p>
+              </details>
+            </div>
+            <p class="form-error" id="inviteRegisterError"></p>
+            <button class="button button-primary auth-submit" type="submit">Enviar para aprovação</button>
+          </form>
         </div>
       </div>
     </section>
@@ -463,6 +533,14 @@
                   <p id="teamFormHelp">O acesso será criado com e-mail e senha.</p>
                 </div>
                 <button class="button button-secondary" type="button" id="teamFormToggleButton">Adicionar</button>
+              </div>
+              <div class="owner-invite-box" id="ownerInviteBox" hidden>
+                <p>Gere um link seguro e envie para o cliente preencher CNPJ, dados cadastrais, logo e aceite dos termos.</p>
+                <button class="button button-primary" type="submit">Gerar link de cadastro</button>
+                <div class="invite-link-box" id="inviteLinkBox" hidden>
+                  <input id="generatedInviteLink" type="text" readonly />
+                  <button class="button button-secondary" id="copyInviteLinkButton" type="button">Copiar link</button>
+                </div>
               </div>
 
               <div class="form-grid">

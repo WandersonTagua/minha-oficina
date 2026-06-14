@@ -59,6 +59,7 @@ function createEmptyStore() {
   return {
     users: [],
     organizations: [],
+    registrationInvites: [],
     attendance: [],
     services: [],
     push: {
@@ -83,6 +84,7 @@ function readStore() {
     const store = JSON.parse(fs.readFileSync(dataFile, "utf8"));
     store.users ||= [];
     store.organizations ||= [];
+    store.registrationInvites ||= [];
     store.attendance ||= [];
     store.services ||= [];
     store.push ||= {};
@@ -101,6 +103,7 @@ function migrateStore(store) {
   let changed = false;
   store.push ||= {};
   store.push.subscriptions ||= [];
+  store.registrationInvites ||= [];
   if (!vapidPublicKey && !vapidPrivateKey && !store.push.vapid) {
     store.push.vapid = webPush.generateVAPIDKeys();
     changed = true;
@@ -257,6 +260,18 @@ function createSubscription(plan = "monthly") {
   };
 }
 
+function createTrialSubscription() {
+  const now = new Date();
+  const expiresAt = new Date(now);
+  expiresAt.setDate(expiresAt.getDate() + 7);
+  return {
+    plan: "trial",
+    status: "active",
+    expiresAt: expiresAt.toISOString(),
+    updatedAt: now.toISOString(),
+  };
+}
+
 function publicOrganizationSubscription(organization) {
   return organization?.subscription || createSubscription("monthly");
 }
@@ -296,7 +311,7 @@ function createOrganizationWithPlan(store, name, plan = "monthly", details = {})
       longitude: null,
       radiusMeters: 150,
     },
-    subscription: createSubscription(plan),
+    subscription: plan === "trial" ? createTrialSubscription() : createSubscription(plan),
     createdAt: new Date().toISOString(),
   };
   store.organizations ||= [];
@@ -356,6 +371,10 @@ function passwordMatches(password, user) {
 
 function createUser({ name, email, password, role, organizationId = "", profile = {} }) {
   const passwordData = hashPassword(password);
+  return createUserWithPasswordData({ name, email, passwordData, role, organizationId, profile });
+}
+
+function createUserWithPasswordData({ name, email, passwordData, role, organizationId = "", profile = {} }) {
   return {
     id: crypto.randomUUID(),
     name,
@@ -748,6 +767,51 @@ function publicUser(user, store = readStore()) {
   };
 }
 
+function publicRegistrationInvite(invite) {
+  const submission = invite.submission || {};
+  return {
+    id: invite.id,
+    token: invite.token,
+    status: invite.status,
+    createdAt: invite.createdAt,
+    submittedAt: invite.submittedAt || "",
+    approvedAt: invite.approvedAt || "",
+    rejectedAt: invite.rejectedAt || "",
+    submission: {
+      managerName: submission.managerName || "",
+      managerEmail: submission.managerEmail || "",
+      organizationName: submission.organizationName || "",
+      organizationLegalName: submission.organizationLegalName || "",
+      organizationCnpj: submission.organizationCnpj || "",
+      organizationPhone: submission.organizationPhone || "",
+      organizationEmail: submission.organizationEmail || "",
+      organizationAddress: submission.organizationAddress || "",
+      organizationCity: submission.organizationCity || "",
+      organizationState: submission.organizationState || "",
+      organizationLogo: submission.organizationLogo || "",
+    },
+  };
+}
+
+function cleanRegistrationSubmission(body) {
+  return {
+    managerName: sanitizeText(body.managerName, 100),
+    managerEmail: normalizeEmail(body.managerEmail),
+    passwordData: hashPassword(String(body.managerPassword || "")),
+    passwordLength: String(body.managerPassword || "").length,
+    organizationName: sanitizeText(body.organizationName, 120),
+    organizationLegalName: sanitizeText(body.organizationLegalName, 160),
+    organizationCnpj: onlyDigits(body.organizationCnpj, 14),
+    organizationPhone: sanitizeText(body.organizationPhone, 30),
+    organizationEmail: normalizeEmail(body.organizationEmail),
+    organizationAddress: sanitizeText(body.organizationAddress, 220),
+    organizationCity: sanitizeText(body.organizationCity, 80),
+    organizationState: sanitizeText(body.organizationState, 2).toLocaleUpperCase("pt-BR"),
+    organizationLogo: sanitizeImageDataUrl(body.organizationLogo),
+    organizationTermsAccepted: Boolean(body.organizationTermsAccepted),
+  };
+}
+
 function sendJson(response, status, body) {
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   response.end(JSON.stringify(body));
@@ -916,6 +980,56 @@ async function handleApi(request, response, pathname) {
     return;
   }
 
+  const inviteSubmitMatch = pathname.match(/^\/api\/registration-invites\/([^/]+)\/submit$/);
+  if (request.method === "POST" && inviteSubmitMatch) {
+    const store = readStore();
+    const token = sanitizeText(decodeURIComponent(inviteSubmitMatch[1]), 120);
+    const invite = (store.registrationInvites || []).find((item) => item.token === token);
+    if (!invite || invite.status !== "open") {
+      sendJson(response, 404, { error: "Link inválido, expirado ou já utilizado." });
+      return;
+    }
+    const submission = cleanRegistrationSubmission(await readJsonBody(request));
+    if (submission.managerName.length < 2 || !submission.managerEmail.includes("@") || submission.passwordLength < 8) {
+      sendJson(response, 400, { error: "Informe nome, e-mail válido e senha com pelo menos 8 caracteres." });
+      return;
+    }
+    if (!submission.organizationName || !submission.organizationLegalName) {
+      sendJson(response, 400, { error: "Informe nome fantasia e razão social da oficina." });
+      return;
+    }
+    if (submission.organizationCnpj.length !== 14) {
+      sendJson(response, 400, { error: "Informe o CNPJ da oficina com 14 dígitos." });
+      return;
+    }
+    if (!submission.organizationPhone && !submission.organizationEmail) {
+      sendJson(response, 400, { error: "Informe telefone ou e-mail comercial da oficina." });
+      return;
+    }
+    if (!submission.organizationAddress || !submission.organizationCity || submission.organizationState.length !== 2) {
+      sendJson(response, 400, { error: "Informe endereço, cidade e UF da oficina." });
+      return;
+    }
+    if (!submission.organizationTermsAccepted) {
+      sendJson(response, 400, { error: "Aceite os termos de uso para enviar o cadastro." });
+      return;
+    }
+    if (store.users.some((user) => user.email === submission.managerEmail)) {
+      sendJson(response, 409, { error: "Já existe uma conta com este e-mail." });
+      return;
+    }
+    if ((store.organizations || []).some((organization) => organization.cnpj === submission.organizationCnpj)) {
+      sendJson(response, 409, { error: "Já existe uma oficina cadastrada com este CNPJ." });
+      return;
+    }
+    invite.status = "submitted";
+    invite.submission = submission;
+    invite.submittedAt = new Date().toISOString();
+    writeStore(store);
+    sendJson(response, 200, { ok: true });
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/api/auth/login") {
     if (isRateLimited(request)) {
       sendJson(response, 429, { error: "Muitas tentativas. Aguarde alguns minutos." });
@@ -1008,7 +1122,97 @@ async function handleApi(request, response, pathname) {
       role: context.user.role,
       users: users.map((user) => publicTeamUser(user, context.store)),
       organizations: context.user.role === "owner" ? context.store.organizations : [],
+      invites: context.user.role === "owner"
+        ? (context.store.registrationInvites || []).map(publicRegistrationInvite)
+        : [],
     });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/registration-invites") {
+    if (context.user.role !== "owner") {
+      sendJson(response, 403, { error: "Apenas o dono do site pode gerar links de cadastro." });
+      return;
+    }
+    const invite = {
+      id: crypto.randomUUID(),
+      token: crypto.randomBytes(18).toString("base64url"),
+      status: "open",
+      createdBy: context.user.id,
+      createdAt: new Date().toISOString(),
+      submission: null,
+    };
+    context.store.registrationInvites ||= [];
+    context.store.registrationInvites.push(invite);
+    writeStore(context.store);
+    const isLocalHost = /^localhost(:|$)|^127\.0\.0\.1(:|$)/.test(String(request.headers.host || ""));
+    const protocol = request.headers["x-forwarded-proto"] || (isLocalHost ? "http" : "https");
+    const hostName = request.headers["x-forwarded-host"] || request.headers.host;
+    sendJson(response, 201, {
+      invite: publicRegistrationInvite(invite),
+      link: `${protocol}://${hostName}/cadastro/${invite.token}`,
+    });
+    return;
+  }
+
+  const inviteApproveMatch = pathname.match(/^\/api\/registration-invites\/([^/]+)\/approve$/);
+  if (request.method === "POST" && inviteApproveMatch) {
+    if (context.user.role !== "owner") {
+      sendJson(response, 403, { error: "Apenas o dono do site pode aprovar cadastros." });
+      return;
+    }
+    const invite = (context.store.registrationInvites || []).find((item) => item.id === inviteApproveMatch[1]);
+    if (!invite || invite.status !== "submitted" || !invite.submission) {
+      sendJson(response, 404, { error: "Cadastro pendente não encontrado." });
+      return;
+    }
+    const body = await readJsonBody(request);
+    const action = sanitizeText(body.action, 20);
+    if (action === "reject") {
+      invite.status = "rejected";
+      invite.rejectedAt = new Date().toISOString();
+      writeStore(context.store);
+      const users = context.store.users.filter((user) => user.role === "manager").map((user) => publicTeamUser(user, context.store));
+      sendJson(response, 200, { users, invites: context.store.registrationInvites.map(publicRegistrationInvite) });
+      return;
+    }
+    const plan = action === "trial" ? "trial" : action === "annual" ? "annual" : "monthly";
+    const submission = invite.submission;
+    if (context.store.users.some((user) => user.email === submission.managerEmail)) {
+      sendJson(response, 409, { error: "Já existe uma conta com este e-mail." });
+      return;
+    }
+    if ((context.store.organizations || []).some((organization) => organization.cnpj === submission.organizationCnpj)) {
+      sendJson(response, 409, { error: "Já existe uma oficina cadastrada com este CNPJ." });
+      return;
+    }
+    const organization = createOrganizationWithPlan(context.store, submission.organizationName, plan, {
+      legalName: submission.organizationLegalName,
+      cnpj: submission.organizationCnpj,
+      phone: submission.organizationPhone,
+      email: submission.organizationEmail,
+      address: submission.organizationAddress,
+      city: submission.organizationCity,
+      state: submission.organizationState,
+      logo: submission.organizationLogo,
+      termsAccepted: true,
+    });
+    const user = createUserWithPasswordData({
+      name: submission.managerName,
+      email: submission.managerEmail,
+      passwordData: submission.passwordData,
+      role: "manager",
+      organizationId: organization.id,
+      profile: { shop: organization.name },
+    });
+    context.store.users.push(user);
+    invite.status = "approved";
+    invite.approvedAt = new Date().toISOString();
+    invite.organizationId = organization.id;
+    invite.managerId = user.id;
+    writeStore(context.store);
+    const users = context.store.users.filter((item) => item.role === "manager").map((item) => publicTeamUser(item, context.store));
+    sendJson(response, 200, { users, invites: context.store.registrationInvites.map(publicRegistrationInvite) });
     return;
   }
 
@@ -1546,6 +1750,9 @@ async function handleApi(request, response, pathname) {
 }
 
 function serveStatic(response, pathname) {
+  if (pathname.startsWith("/cadastro/")) {
+    pathname = "/index.html";
+  }
   if (pathname.startsWith("/media/")) {
     const fileName = path.basename(pathname);
     const filePath = path.join(mediaDir, fileName);
