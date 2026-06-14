@@ -1648,6 +1648,11 @@ select {
   gap: 14px;
 }
 
+.owner-invite-box[hidden],
+.owner-invite-box:not(.is-active) {
+  display: none !important;
+}
+
 .owner-invite-box p {
   margin: 0;
   color: var(--slate-500);

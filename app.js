@@ -742,6 +742,7 @@ function renderPlaylist() {
 
 function setupRoleUi() {
   const role = state.user?.role || "employee";
+  if (role !== "owner") state.teamMode = "list";
   document.querySelectorAll("[data-section]").forEach((button) => {
     const section = button.dataset.section;
     const managerSections = ["home", "inventory", "profile", "tv", "team"];
@@ -803,13 +804,16 @@ function setTeamFormCollapsed(collapsed) {
 }
 
 function setOwnerInviteMode(active) {
-  elements.ownerInviteBox.hidden = !active;
+  const isActive = Boolean(active && state.user?.role === "owner");
+  elements.ownerInviteBox.hidden = !isActive;
+  elements.ownerInviteBox.classList.toggle("is-active", isActive);
   const formGrid = elements.teamForm.querySelector(".form-grid");
-  formGrid.hidden = active;
+  formGrid.hidden = isActive;
   formGrid.querySelectorAll("input, select, textarea").forEach((field) => {
-    field.disabled = active;
+    field.disabled = isActive;
   });
-  elements.teamForm.querySelector(".form-footer").hidden = active;
+  elements.teamForm.querySelector(".form-footer").hidden = isActive;
+  if (!isActive) elements.inviteLinkBox.hidden = true;
 }
 
 function toggleTeamForm() {
@@ -895,6 +899,7 @@ function createPendingInviteCard(invite) {
 function updateTeamLayout() {
   const role = state.user?.role || "employee";
   const isOwner = role === "owner";
+  if (!isOwner) state.teamMode = "list";
   const isCreateMode = isOwner && state.teamMode === "create";
   elements.teamForm.hidden = isOwner ? !isCreateMode : false;
   setOwnerInviteMode(isOwner && isCreateMode);
@@ -1709,7 +1714,7 @@ function showSection(sectionName) {
 async function submitTeam(event) {
   event.preventDefault();
   try {
-    if (state.user.role === "owner") {
+    if (state.user.role === "owner" && state.teamMode === "create") {
       await createRegistrationInvite();
       return;
     }
