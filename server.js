@@ -864,54 +864,9 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "POST" && pathname === "/api/auth/register") {
-    if (isRateLimited(request)) {
-      sendJson(response, 429, { error: "Muitas tentativas. Aguarde alguns minutos." });
-      return;
-    }
-    const body = await readJsonBody(request);
-    const name = sanitizeText(body.name, 100);
-    const email = normalizeEmail(body.email);
-    const password = String(body.password || "");
-    if (name.length < 2 || !email.includes("@") || password.length < 8) {
-      sendJson(response, 400, {
-        error: "Informe nome, e-mail válido e senha com pelo menos 8 caracteres.",
-      });
-      return;
-    }
-    const store = readStore();
-    if (store.users.some((user) => user.email === email)) {
-      sendJson(response, 409, { error: "Já existe uma conta com este e-mail." });
-      return;
-    }
-    if (store.users.length > 0) {
-      sendJson(response, 403, {
-        error: "Novas contas devem ser criadas pelo dono ou gestor.",
-      });
-      return;
-    }
-    if (ownerSetupKey && String(body.ownerSetupKey || "") !== ownerSetupKey) {
-      sendJson(response, 403, {
-        error: "Código de criação do dono inválido.",
-      });
-      return;
-    }
-    if (!ownerSetupKey) {
-      sendJson(response, 403, {
-        error: "Configure OWNER_SETUP_KEY no servidor antes de criar o dono.",
-      });
-      return;
-    }
-    const user = createUser({
-      name,
-      email,
-      password,
-      role: "owner",
-      profile: { shop: "Minha plataforma" },
+    sendJson(response, 403, {
+      error: "Cadastro público desativado. Acesse com uma conta liberada pelo gestor.",
     });
-    store.users.push(user);
-    writeStore(store);
-    createSession(response, user.id, request);
-    sendJson(response, 201, { user: publicUser(user, store) });
     return;
   }
 

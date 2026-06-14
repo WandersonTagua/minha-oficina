@@ -176,8 +176,8 @@ select {
 }
 
 .auth-card {
-  width: min(410px, 100%);
-  padding: 8px;
+  width: min(390px, 100%);
+  padding: 10px;
   border: 1px solid rgba(202, 213, 220, 0.82);
   border-radius: 20px;
   background:
@@ -185,35 +185,14 @@ select {
   box-shadow: var(--shadow);
 }
 
-.auth-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 5px;
-  padding: 5px;
-  border-radius: 12px;
-  background: rgba(221, 229, 234, 0.74);
-}
-
-.auth-tab {
-  padding: 10px;
-  border: 0;
-  border-radius: 8px;
-  color: var(--slate-500);
-  background: transparent;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.auth-tab.active {
-  color: var(--navy-900);
-  background: rgba(255, 255, 255, 0.84);
-  box-shadow: 0 3px 10px rgba(13, 38, 57, 0.08);
+.auth-login-card {
+  transform: translateY(-18px);
 }
 
 .auth-form {
   display: none;
   gap: 17px;
-  padding: 28px 24px 24px;
+  padding: 30px 24px 24px;
 }
 
 .auth-form.active {
@@ -286,13 +265,46 @@ select {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 15px 15px 19px 19px;
   color: var(--navy-950);
-  background: var(--gold-500);
+  background:
+    linear-gradient(145deg, #ffd34f, var(--gold-500));
+  clip-path: polygon(50% 0, 100% 17%, 92% 78%, 50% 100%, 8% 78%, 0 17%);
   font-family: "Manrope", sans-serif;
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 900;
   letter-spacing: -1px;
+  box-shadow: 0 10px 22px rgba(233, 161, 28, 0.22);
+}
+
+.brand-mark > span {
+  position: relative;
+  z-index: 1;
+  transform: translateY(1px);
+}
+
+.brand-mark::before {
+  content: "";
+  position: absolute;
+  inset: 7px 9px auto;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(9, 28, 44, 0.72);
+  box-shadow: 0 8px 0 rgba(9, 28, 44, 0.48);
+}
+
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  right: 9px;
+  bottom: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(9, 28, 44, 0.72);
+}
 }
 
 .brand strong,

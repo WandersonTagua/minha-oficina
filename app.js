@@ -38,18 +38,10 @@ const state = {
 };
 
 const elements = {
-  loginTab: document.querySelector("#loginTab"),
-  registerTab: document.querySelector("#registerTab"),
   loginForm: document.querySelector("#loginForm"),
-  registerForm: document.querySelector("#registerForm"),
   loginEmail: document.querySelector("#loginEmail"),
   loginPassword: document.querySelector("#loginPassword"),
-  registerName: document.querySelector("#registerName"),
-  registerEmail: document.querySelector("#registerEmail"),
-  registerPassword: document.querySelector("#registerPassword"),
-  ownerSetupKey: document.querySelector("#ownerSetupKey"),
   loginError: document.querySelector("#loginError"),
-  registerError: document.querySelector("#registerError"),
   installButton: document.querySelector("#installButton"),
   logoutButton: document.querySelector("#logoutButton"),
   accountName: document.querySelector("#accountName"),
@@ -181,7 +173,7 @@ async function api(path, options = {}) {
   return body;
 }
 
-function showAuth(tab = "login") {
+function showAuth() {
   state.user = null;
   state.tools = [];
   state.mechanicTools = [];
@@ -190,7 +182,7 @@ function showAuth(tab = "login") {
   stopServicesPolling();
   document.body.classList.remove("authenticated");
   document.body.classList.add("auth-pending");
-  switchAuthTab(tab);
+  elements.loginError.textContent = "";
 }
 
 function showAuthenticated(user) {
@@ -330,16 +322,6 @@ async function syncPushSubscriptionQuietly() {
   } catch {
     // A tela continua funcionando; o usuário ainda pode tocar em "Notificações ativadas" para tentar novamente.
   }
-}
-
-function switchAuthTab(tab) {
-  const loginActive = tab === "login";
-  elements.loginTab.classList.toggle("active", loginActive);
-  elements.registerTab.classList.toggle("active", !loginActive);
-  elements.loginForm.classList.toggle("active", loginActive);
-  elements.registerForm.classList.toggle("active", !loginActive);
-  elements.loginError.textContent = "";
-  elements.registerError.textContent = "";
 }
 
 async function loadApp() {
@@ -1837,31 +1819,6 @@ async function submitLogin(event) {
   }
 }
 
-async function submitRegister(event) {
-  event.preventDefault();
-  elements.registerError.textContent = "";
-  try {
-    const { user } = await api("/api/auth/register", {
-      method: "POST",
-      body: JSON.stringify({
-        name: elements.registerName.value,
-        email: elements.registerEmail.value,
-        password: elements.registerPassword.value,
-        ownerSetupKey: elements.ownerSetupKey.value,
-      }),
-    });
-    state.tools = [];
-    showAuthenticated(user);
-    await refreshRoleData();
-    renderProfile();
-    renderAll();
-    elements.registerForm.reset();
-    showToast("Conta criada com sucesso.");
-  } catch (error) {
-    elements.registerError.textContent = error.message;
-  }
-}
-
 async function logout() {
   try {
     await api("/api/auth/logout", { method: "POST" });
@@ -1929,9 +1886,6 @@ elements.plateSearchInput.addEventListener("input", renderPlateSearchResults);
 elements.profileEditButton.addEventListener("click", () => setProfileEditMode(true));
 elements.useWorkshopLocationButton.addEventListener("click", useWorkshopCurrentLocation);
 elements.loginForm.addEventListener("submit", submitLogin);
-elements.registerForm.addEventListener("submit", submitRegister);
-elements.loginTab.addEventListener("click", () => switchAuthTab("login"));
-elements.registerTab.addEventListener("click", () => switchAuthTab("register"));
 elements.logoutButton.addEventListener("click", logout);
 elements.installButton.addEventListener("click", installApp);
 elements.enableNotificationsButton.addEventListener("click", enablePushNotifications);
