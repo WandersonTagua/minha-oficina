@@ -77,8 +77,9 @@ select {
   padding: 34px 48px;
   color: var(--white);
   background:
-    radial-gradient(circle at 15% 80%, rgba(23, 105, 170, 0.55), transparent 35%),
-    radial-gradient(circle at 90% 15%, rgba(233, 161, 28, 0.16), transparent 27%),
+    radial-gradient(circle at 18% 82%, rgba(23, 105, 170, 0.58), transparent 36%),
+    radial-gradient(circle at 88% 16%, rgba(233, 161, 28, 0.22), transparent 27%),
+    linear-gradient(135deg, rgba(9, 28, 44, 0.96), rgba(18, 54, 79, 0.78)),
     var(--navy-950);
 }
 
@@ -107,10 +108,43 @@ select {
   line-height: 1.7;
 }
 
+.auth-yard-card {
+  max-width: 500px;
+  display: grid;
+  gap: 7px;
+  margin-top: 24px;
+  padding: 18px;
+  border: 1px solid rgba(233, 161, 28, 0.28);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 95% 0%, rgba(233, 161, 28, 0.22), transparent 32%),
+    rgba(255, 255, 255, 0.07);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.16);
+}
+
+.auth-yard-card span {
+  color: var(--gold-500);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+
+.auth-yard-card strong {
+  font-family: "Manrope", sans-serif;
+  font-size: 18px;
+}
+
+.auth-yard-card small {
+  color: #b9cedb;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .auth-pitch ul {
   display: grid;
   gap: 13px;
-  margin: 30px 0 0;
+  margin: 22px 0 0;
   padding: 0;
   list-style: none;
   color: #d5e3eb;
@@ -1955,6 +1989,11 @@ select {
     letter-spacing: -1.5px;
   }
 
+  .auth-yard-card {
+    margin-top: 18px;
+    padding: 15px;
+  }
+
   .auth-pitch ul {
     display: none;
   }
@@ -2036,6 +2075,10 @@ select {
 
   .auth-pitch p {
     font-size: 11px;
+  }
+
+  .auth-yard-card strong {
+    font-size: 15px;
   }
 
   .auth-form {
