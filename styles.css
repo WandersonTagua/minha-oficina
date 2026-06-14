@@ -1206,6 +1206,21 @@ select {
   padding: 27px;
 }
 
+.profile-form.is-collapsed {
+  padding-bottom: 22px;
+}
+
+.profile-form.is-collapsed .form-grid,
+.profile-form.is-collapsed .form-footer {
+  display: none;
+}
+
+.profile-form.is-collapsed .tv-form-header {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
 .profile-summary-card {
   display: grid;
   gap: 18px;

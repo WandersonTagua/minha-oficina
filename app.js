@@ -139,6 +139,7 @@ const elements = {
   teamSubtitle: document.querySelector("#teamSubtitle"),
   teamFormTitle: document.querySelector("#teamFormTitle"),
   teamFormHelp: document.querySelector("#teamFormHelp"),
+  teamFormToggleButton: document.querySelector("#teamFormToggleButton"),
   teamSubmitButton: document.querySelector("#teamSubmitButton"),
   teamSavedMessage: document.querySelector("#teamSavedMessage"),
   teamListTitle: document.querySelector("#teamListTitle"),
@@ -705,12 +706,25 @@ function setupRoleUi() {
       ? "Defina a oficina, o plano e o acesso inicial do gestor."
       : "O colaborador usará o celular para marcar presença.";
   elements.teamSubmitButton.textContent = role === "owner" ? "Cadastrar gestor" : "Cadastrar colaborador";
+  elements.teamFormToggleButton.hidden = role === "owner";
+  setTeamFormCollapsed(role !== "owner");
   elements.teamNavLabel.textContent = role === "owner" ? "Clientes/Oficinas" : "Equipe/Fila";
   document.querySelector("#addToolButton").hidden = role !== "manager";
   document.querySelector("#reportButton").hidden = role !== "manager";
   document.querySelector("#sidebarReportButton").hidden = role !== "manager";
   document.querySelector(".sidebar-card").hidden = role !== "manager";
   updateTeamLayout();
+}
+
+function setTeamFormCollapsed(collapsed) {
+  if (!elements.teamForm || !elements.teamFormToggleButton) return;
+  elements.teamForm.classList.toggle("is-collapsed", collapsed);
+  elements.teamFormToggleButton.textContent = collapsed ? "Adicionar colaborador" : "Fechar";
+  elements.teamFormToggleButton.setAttribute("aria-expanded", String(!collapsed));
+}
+
+function toggleTeamForm() {
+  setTeamFormCollapsed(!elements.teamForm.classList.contains("is-collapsed"));
 }
 
 function renderTeam() {
@@ -1544,6 +1558,8 @@ async function submitTeam(event) {
     if (state.user.role === "owner") {
       state.teamMode = "list";
       showSection("team");
+    } else {
+      setTeamFormCollapsed(true);
     }
     renderTeam();
     elements.teamSavedMessage.textContent =
@@ -1899,6 +1915,7 @@ elements.toolForm.addEventListener("submit", submitTool);
 elements.profileForm.addEventListener("submit", submitProfile);
 elements.tvForm.addEventListener("submit", submitTvPanel);
 elements.teamForm.addEventListener("submit", submitTeam);
+elements.teamFormToggleButton.addEventListener("click", toggleTeamForm);
 elements.dispatchServiceForm.addEventListener("submit", submitDispatchService);
 elements.plateSearchInput.addEventListener("input", renderPlateSearchResults);
 elements.profileEditButton.addEventListener("click", () => setProfileEditMode(true));
