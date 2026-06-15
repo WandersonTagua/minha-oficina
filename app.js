@@ -770,7 +770,7 @@ function setupRoleUi() {
   elements.teamFormToggleButton.hidden = role === "owner";
   setTeamFormCollapsed(role !== "owner");
   elements.teamNavLabel.textContent = role === "owner" ? "Clientes/Oficinas" : "Equipe/Fila";
-  document.querySelector("#addToolButton").hidden = role !== "manager";
+  document.querySelector("#addToolButton").hidden = !["manager", "employee"].includes(role);
   document.querySelector("#reportButton").hidden = role !== "manager";
   document.querySelector("#sidebarReportButton").hidden = role !== "manager";
   document.querySelector(".sidebar-card").hidden = role !== "manager";
@@ -1705,7 +1705,8 @@ function showSection(sectionName) {
       : button.dataset.section === sectionName;
     button.classList.toggle("active", isActiveTeamMode);
   });
-  const showInventoryActions = state.user?.role === "manager" && sectionName === "inventory";
+  const canAddTool = ["manager", "employee"].includes(state.user?.role);
+  const showInventoryActions = canAddTool && sectionName === "inventory";
   document.querySelector("#addToolButton").hidden = !showInventoryActions;
   document.querySelector("#reportButton").hidden = !showInventoryActions;
   elements.sidebar.classList.remove("open");
