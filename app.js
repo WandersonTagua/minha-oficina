@@ -139,6 +139,8 @@ const elements = {
   teamName: document.querySelector("#teamName"),
   teamEmail: document.querySelector("#teamEmail"),
   teamPassword: document.querySelector("#teamPassword"),
+  teamRoleField: document.querySelector("#teamRoleField"),
+  teamRole: document.querySelector("#teamRole"),
   organizationField: document.querySelector("#organizationField"),
   organizationName: document.querySelector("#organizationName"),
   organizationLegalNameField: document.querySelector("#organizationLegalNameField"),
@@ -164,6 +166,8 @@ const elements = {
   subscriptionPlan: document.querySelector("#subscriptionPlan"),
   teamPanels: document.querySelector("#teamPanels"),
   managerAttendancePanel: document.querySelector("#managerAttendancePanel"),
+  profileCollaboratorsSection: document.querySelector("#profileCollaboratorsSection"),
+  profileCollaboratorsList: document.querySelector("#profileCollaboratorsList"),
   teamTitle: document.querySelector("#teamTitle"),
   teamSubtitle: document.querySelector("#teamSubtitle"),
   teamFormTitle: document.querySelector("#teamFormTitle"),
@@ -446,7 +450,7 @@ async function refreshRoleData() {
   const [{ tools, mechanicTools = [] }, { tv }, team, attendance, services] = await Promise.all([
     api("/api/tools"),
     api(tvPath),
-    api("/api/team"),
+    state.user.role === "manager" ? api("/api/team") : Promise.resolve({ users: [], invites: [] }),
     api("/api/attendance"),
     api("/api/services"),
   ]);
@@ -469,7 +473,7 @@ async function refreshRoleData() {
   renderServices();
   updateNotificationButton();
   if (state.user.role === "owner") showSection("team");
-  if (state.user.role === "manager") showSection("home");
+  if (isOperationalRole(state.user.role)) showSection("home");
   startServicesPolling();
 }
 
@@ -510,6 +514,20 @@ function createElement(tag, className, text) {
   return element;
 }
 
+function isOperationalRole(role = state.user?.role) {
+  return ["manager", "reception"].includes(role);
+}
+
+function roleLabel(role) {
+  const labels = {
+    owner: "Dono do site",
+    manager: "Gestor",
+    reception: "Recepção",
+    employee: "Mecânico",
+  };
+  return labels[role] || role;
+}
+
 function showToast(message) {
   elements.toast.textContent = message;
   elements.toast.classList.add("visible");
@@ -541,7 +559,7 @@ function updateCategoryFilter() {
 }
 
 function getVisibleInventoryTools() {
-  const mechanicTools = state.user?.role === "manager"
+  const mechanicTools = isOperationalRole(state.user?.role)
     ? state.mechanicTools.flatMap((mechanic) => mechanic.tools || [])
     : [];
   return [...state.tools, ...mechanicTools];
@@ -623,7 +641,7 @@ function createToolCard(tool, options = {}) {
 
 function renderTools() {
   const visibleTools = filterTools(state.tools);
-  const isManager = state.user?.role === "manager";
+  const isManager = isOperationalRole(state.user?.role);
   elements.inventoryTitle.textContent = isManager ? "Ferramentas da oficina" : "Minhas ferramentas";
   elements.inventorySubtitle.textContent = isManager
     ? "Cadastre aqui as ferramentas pertencentes à oficina."
@@ -649,7 +667,7 @@ function renderTools() {
 }
 
 function renderMechanicTools() {
-  const isManager = state.user?.role === "manager";
+  const isManager = isOperationalRole(state.user?.role);
   elements.mechanicToolsSection.hidden = !isManager;
   if (!isManager) {
     elements.mechanicToolsList.replaceChildren();
@@ -745,12 +763,14 @@ function setupRoleUi() {
   if (role !== "owner") state.teamMode = "list";
   document.querySelectorAll("[data-section]").forEach((button) => {
     const section = button.dataset.section;
-    const managerSections = ["home", "inventory", "profile", "tv", "team"];
+    const managerSections = role === "manager"
+      ? ["home", "inventory", "profile", "tv", "team"]
+      : ["home", "inventory", "profile", "tv"];
     const employeeSections = ["inventory", "attendance", "serviceHistory"];
     const ownerSections = ["team"];
     const visible =
       (role === "owner" && ownerSections.includes(section)) ||
-      (role === "manager" && managerSections.includes(section)) ||
+      (isOperationalRole(role) && managerSections.includes(section)) ||
       (role === "employee" && employeeSections.includes(section));
     button.hidden = !visible || (button.hasAttribute("data-owner-only") && role !== "owner");
     if (role !== "owner" && button.dataset.teamMode === "create") button.hidden = true;
@@ -759,8 +779,11 @@ function setupRoleUi() {
   document.querySelector('[data-section="inventory"]').style.order = role === "employee" ? "1" : "";
 
   setOrganizationRegistrationFieldsVisible(role === "owner");
+  elements.teamRoleField.hidden = role === "owner";
+  elements.teamRole.value = "employee";
+  elements.teamRole.querySelector('option[value="manager"]').hidden = role !== "owner";
   elements.topbarEyebrow.textContent =
-    role === "owner" ? "GESTÃO DO SITE" : role === "manager" ? "GESTÃO DA OFICINA" : "PAINEL DO MECÂNICO";
+    role === "owner" ? "GESTÃO DO SITE" : isOperationalRole(role) ? "GESTÃO DA OFICINA" : "PAINEL DO MECÂNICO";
   elements.teamFormTitle.textContent = role === "owner" ? "Gerar link de cadastro" : "Cadastrar colaborador";
   elements.teamFormHelp.textContent =
     role === "owner"
@@ -770,10 +793,10 @@ function setupRoleUi() {
   elements.teamFormToggleButton.hidden = role === "owner";
   setTeamFormCollapsed(role !== "owner");
   elements.teamNavLabel.textContent = role === "owner" ? "Clientes/Oficinas" : "Equipe/Fila";
-  document.querySelector("#addToolButton").hidden = !["manager", "employee"].includes(role);
-  document.querySelector("#reportButton").hidden = role !== "manager";
-  document.querySelector("#sidebarReportButton").hidden = role !== "manager";
-  document.querySelector(".sidebar-card").hidden = role !== "manager";
+  document.querySelector("#addToolButton").hidden = !["manager", "employee", "reception"].includes(role);
+  document.querySelector("#reportButton").hidden = !isOperationalRole(role);
+  document.querySelector("#sidebarReportButton").hidden = !isOperationalRole(role);
+  document.querySelector(".sidebar-card").hidden = !isOperationalRole(role);
   updateTeamLayout();
 }
 
@@ -828,6 +851,7 @@ function renderTeam() {
       ? "Nenhuma oficina cadastrada ainda."
       : "Nenhum usuário cadastrado ainda.";
     elements.teamList.replaceChildren(createElement("p", "tool-card-subtitle", emptyText));
+    renderProfileCollaborators();
     return;
   }
   if (state.user?.role === "owner") {
@@ -845,11 +869,15 @@ function renderTeam() {
       const info = document.createElement("div");
       info.append(createElement("strong", "", user.name));
       info.append(createElement("small", "", `${user.email}${user.organizationName ? ` · ${user.organizationName}` : ""}`));
-      const role = createElement("span", "playlist-type", user.role === "manager" ? "Gestor" : "Colaborador");
-      row.append(avatar, info, role);
+      const role = createElement("span", `playlist-type ${user.active === false ? "is-blocked" : ""}`, `${roleLabel(user.role)} · ${user.active === false ? "Desativado" : "Ativo"}`);
+      const editButton = createElement("button", "playlist-remove", "Editar");
+      editButton.type = "button";
+      editButton.addEventListener("click", () => editTeamMember(user));
+      row.append(avatar, info, role, editButton);
       return row;
     }),
   );
+  renderProfileCollaborators();
 }
 
 function createPendingInviteCard(invite) {
@@ -972,16 +1000,109 @@ function createOwnerClientCard(user) {
   const releaseButton = createElement("button", "button button-secondary", "Liberar");
   const renewButton = createElement("button", "button button-primary", "Renovar");
   const blockButton = createElement("button", "button button-danger", "Bloquear");
+  const editButton = createElement("button", "button button-secondary", "Editar gestor");
   [releaseButton, renewButton, blockButton].forEach((button) => {
     button.type = "button";
   });
+  editButton.type = "button";
   releaseButton.addEventListener("click", () => updateOrganizationSubscription(user.organizationId, "activate"));
   renewButton.addEventListener("click", () => updateOrganizationSubscription(user.organizationId, "renew"));
   blockButton.addEventListener("click", () => updateOrganizationSubscription(user.organizationId, "block"));
-  actions.append(releaseButton, renewButton, blockButton);
+  editButton.addEventListener("click", () => editTeamMember(user));
+  actions.append(editButton, releaseButton, renewButton, blockButton);
 
   row.append(header, details, actions);
   return row;
+}
+
+function renderProfileCollaborators() {
+  if (!elements.profileCollaboratorsSection || !elements.profileCollaboratorsList) return;
+  const visible = state.user?.role === "manager";
+  elements.profileCollaboratorsSection.hidden = !visible;
+  if (!visible) {
+    elements.profileCollaboratorsList.replaceChildren();
+    return;
+  }
+  if (!state.team.length) {
+    elements.profileCollaboratorsList.replaceChildren(createElement("p", "tool-card-subtitle", "Nenhum colaborador cadastrado ainda."));
+    return;
+  }
+  elements.profileCollaboratorsList.replaceChildren(
+    ...state.team.map((user) => {
+      const row = createElement("div", "team-row");
+      const avatar = createElement("span", "account-avatar", user.name.charAt(0).toLocaleUpperCase("pt-BR"));
+      const info = document.createElement("div");
+      info.append(createElement("strong", "", user.name));
+      info.append(createElement("small", "", `${roleLabel(user.role)} · ${user.email} · ${user.active === false ? "Desativado" : "Ativo"}`));
+      const actions = createElement("div", "client-office-actions");
+      const editButton = createElement("button", "button button-secondary", "Editar");
+      editButton.type = "button";
+      editButton.addEventListener("click", () => editTeamMember(user));
+      const toggleButton = createElement("button", user.active === false ? "button button-primary" : "button button-danger", user.active === false ? "Ativar" : "Desativar");
+      toggleButton.type = "button";
+      toggleButton.addEventListener("click", () => updateTeamMember(user, { active: user.active === false }));
+      actions.append(editButton, toggleButton);
+      row.append(avatar, info, actions);
+      return row;
+    }),
+  );
+}
+
+async function updateTeamMember(user, changes) {
+  try {
+    const body = {
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      active: user.active !== false,
+      organizationName: user.organizationName,
+      organizationLegalName: user.organizationLegalName,
+      organizationPhone: user.organizationPhone,
+      organizationEmail: user.organizationEmail,
+      organizationAddress: user.organizationAddress,
+      organizationCity: user.organizationCity,
+      organizationState: user.organizationState,
+      ...changes,
+    };
+    const data = await api(`/api/team/${user.id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+    state.team = data.users || state.team.map((item) => (item.id === user.id ? data.user : item));
+    renderTeam();
+    renderProfileCollaborators();
+    showToast("Cadastro atualizado.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function editTeamMember(user) {
+  const name = window.prompt("Nome", user.name);
+  if (name === null) return;
+  const email = window.prompt("E-mail/login", user.email);
+  if (email === null) return;
+  let role = user.role;
+  if (state.user?.role === "manager") {
+    const roleInput = window.prompt("Função: employee para Mecânico ou reception para Recepção", user.role);
+    if (roleInput === null) return;
+    role = roleInput === "reception" ? "reception" : "employee";
+  }
+  const password = window.prompt("Nova senha (opcional, deixe em branco para manter)", "");
+  if (password === null) return;
+  const changes = {
+    name: name.trim(),
+    email: email.trim(),
+    role,
+    active: user.active !== false,
+  };
+  if (password.trim()) changes.password = password.trim();
+  if (state.user?.role === "owner") {
+    const organizationName = window.prompt("Nome da oficina", user.organizationName || "");
+    if (organizationName === null) return;
+    changes.organizationName = organizationName.trim();
+  }
+  updateTeamMember(user, changes);
 }
 
 function renderAttendanceList(container) {
@@ -996,7 +1117,11 @@ function renderAttendanceList(container) {
       row.append(createElement("span", "attendance-position", String(index + 1)));
       const info = document.createElement("div");
       info.append(createElement("strong", "", entry.name));
-      info.append(createElement("small", "", `Chegou às ${new Date(entry.checkedInAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`));
+      const arrivedAt = entry.arrivedAt || entry.checkedInAt;
+      const returnedText = entry.lastReturnedAt
+        ? ` · Retornou à fila ${new Date(entry.lastReturnedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+        : "";
+      info.append(createElement("small", "", `Chegou às ${new Date(arrivedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}${returnedText}`));
       row.append(info);
       return row;
     }),
@@ -1054,9 +1179,13 @@ function hasServiceFormInProgress() {
     const mileage = form.elements.mileage?.value.trim();
     const rejectionReason = form.elements.rejectionReason?.value.trim();
     const observation = form.elements.observation?.value.trim();
+    const vehicleBrand = form.elements.vehicleBrand?.value.trim();
+    const vehicleModel = form.elements.vehicleModel?.value.trim();
+    const vehicleYear = form.elements.vehicleYear?.value.trim();
+    const vehicleColor = form.elements.vehicleColor?.value.trim();
     const dashboardPhoto = form.elements.dashboardPhoto?.files?.length;
     const updatePhoto = form.elements.photo?.files?.length;
-    return Boolean(plate || mileage || rejectionReason || observation || dashboardPhoto || updatePhoto);
+    return Boolean(plate || mileage || rejectionReason || observation || vehicleBrand || vehicleModel || vehicleYear || vehicleColor || dashboardPhoto || updatePhoto);
   });
 }
 
@@ -1085,7 +1214,11 @@ function renderAvailableMechanics() {
         createElement(
           "small",
           "",
-          `Chegou às ${new Date(mechanic.checkedInAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`,
+          `Chegou às ${new Date(mechanic.arrivedAt || mechanic.checkedInAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}${
+            mechanic.lastReturnedAt
+              ? ` · Retornou ${new Date(mechanic.lastReturnedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+              : ""
+          }`,
         ),
       );
       row.append(info);
@@ -1105,6 +1238,14 @@ function createServiceSummary(service) {
   if (service.notes) item.append(createElement("p", "", service.notes));
   if (service.plate || service.mileage) {
     item.append(createElement("small", "service-meta", `Placa ${service.plate || "-"} · Km ${service.mileage || "-"}`));
+  }
+  if (service.vehicle?.brand || service.vehicle?.model || service.vehicle?.year || service.vehicle?.color) {
+    item.append(createElement("small", "service-meta", [
+      service.vehicle.brand,
+      service.vehicle.model,
+      service.vehicle.year,
+      service.vehicle.color,
+    ].filter(Boolean).join(" · ")));
   }
   return item;
 }
@@ -1155,13 +1296,19 @@ function createPlateSearchResult(service) {
   if (service.rejectionReason) {
     card.append(createElement("p", "service-history-note", `Motivo da rejeição: ${service.rejectionReason}`));
   }
+  if (service.dashboardPhoto) {
+    const label = service.acceptance?.acceptedAt
+      ? `Foto do painel no aceite · ${formatDateTime(service.acceptance.acceptedAt)}`
+      : "Foto do painel no aceite";
+    card.append(createServicePhotoToggle(service.dashboardPhoto, label));
+  }
   appendServiceUpdates(card, service);
   return card;
 }
 
 function renderPlateSearchResults() {
   if (!elements.plateSearchInput || !elements.plateSearchResults) return;
-  if (state.user?.role !== "manager") return;
+  if (!isOperationalRole(state.user?.role)) return;
   const query = normalizePlate(elements.plateSearchInput.value);
   if (!query) {
     elements.plateSearchResults.replaceChildren(
@@ -1187,6 +1334,26 @@ function createPendingServiceCard(service) {
       <span>Placa do veículo</span>
       <input name="plate" type="text" placeholder="ABC1D23" required />
     </label>
+    <div class="service-actions">
+      <button class="button button-secondary" type="button" data-lookup-vehicle>Pesquisar informações do veículo</button>
+      <small class="service-meta" data-vehicle-status>Preencha manualmente se a consulta não retornar dados.</small>
+    </div>
+    <label class="field">
+      <span>Marca</span>
+      <input name="vehicleBrand" type="text" placeholder="Ex.: Volkswagen" />
+    </label>
+    <label class="field">
+      <span>Modelo</span>
+      <input name="vehicleModel" type="text" placeholder="Ex.: Gol" />
+    </label>
+    <label class="field">
+      <span>Ano</span>
+      <input name="vehicleYear" type="text" placeholder="Ex.: 2020" />
+    </label>
+    <label class="field">
+      <span>Cor</span>
+      <input name="vehicleColor" type="text" placeholder="Ex.: Branco" />
+    </label>
     <label class="field">
       <span>Quilometragem</span>
       <input name="mileage" type="number" min="0" placeholder="Ex.: 85420" required />
@@ -1205,6 +1372,7 @@ function createPendingServiceCard(service) {
     </div>
   `;
   form.addEventListener("submit", (event) => acceptService(event, service.id));
+  form.querySelector("[data-lookup-vehicle]").addEventListener("click", () => lookupVehicleForForm(form));
   form.querySelector("[data-reject-service]").addEventListener("click", () => rejectService(form, service.id));
   card.append(form);
   return card;
@@ -1446,8 +1614,8 @@ async function deleteTool(id) {
 
 function renderProfile() {
   const role = state.user?.role || "employee";
-  elements.profileSectionTitle.textContent = role === "manager" ? "Dados do gestor" : "Meus dados";
-  elements.profileSectionSubtitle.textContent = role === "manager"
+  elements.profileSectionTitle.textContent = isOperationalRole(role) ? "Dados do gestor/oficina" : "Meus dados";
+  elements.profileSectionSubtitle.textContent = isOperationalRole(role)
     ? "Informações vinculadas à oficina cadastrada pelo dono do site."
     : "Estas informações ficam vinculadas ao seu cadastro.";
 
@@ -1457,7 +1625,7 @@ function renderProfile() {
   elements.profileViewPhone.textContent = state.profile.phone || "Não informado";
   elements.profileViewEmail.textContent = state.user?.email || "Não informado";
   const location = state.user?.organizationLocation || {};
-  elements.workshopLocationField.hidden = role !== "manager";
+  elements.workshopLocationField.hidden = !isOperationalRole(role);
   elements.workshopLatitude.value = Number.isFinite(Number(location.latitude)) ? location.latitude : "";
   elements.workshopLongitude.value = Number.isFinite(Number(location.longitude)) ? location.longitude : "";
   elements.workshopLocationText.textContent = locationText(location);
@@ -1467,6 +1635,7 @@ function renderProfile() {
   elements.profilePhone.value = state.profile.phone || "";
   elements.profileShop.value = state.profile.shop || "";
   setProfileEditMode(state.profileEditing);
+  renderProfileCollaborators();
 }
 
 function setProfileEditMode(editing) {
@@ -1705,7 +1874,7 @@ function showSection(sectionName) {
       : button.dataset.section === sectionName;
     button.classList.toggle("active", isActiveTeamMode);
   });
-  const canAddTool = ["manager", "employee"].includes(state.user?.role);
+  const canAddTool = ["manager", "employee", "reception"].includes(state.user?.role);
   const showInventoryActions = canAddTool && sectionName === "inventory";
   document.querySelector("#addToolButton").hidden = !showInventoryActions;
   document.querySelector("#reportButton").hidden = !showInventoryActions;
@@ -1749,6 +1918,7 @@ async function submitTeam(event) {
       name: elements.teamName.value.trim(),
       email: elements.teamEmail.value.trim(),
       password: elements.teamPassword.value,
+      role: elements.teamRole.value,
       organizationName: elements.organizationName.value.trim(),
       organizationLegalName: elements.organizationLegalName.value.trim(),
       organizationCnpj: onlyDigits(elements.organizationCnpj.value),
@@ -1988,6 +2158,14 @@ async function acceptService(event, serviceId) {
         plate: form.elements.plate.value.trim(),
         mileage: form.elements.mileage.value.trim(),
         dashboardPhoto,
+        vehicle: {
+          plate: form.elements.plate.value.trim(),
+          brand: form.elements.vehicleBrand.value.trim(),
+          model: form.elements.vehicleModel.value.trim(),
+          year: form.elements.vehicleYear.value.trim(),
+          color: form.elements.vehicleColor.value.trim(),
+          source: form.dataset.vehicleSource || "manual",
+        },
       }),
     });
     setServicesFromPayload(services);
@@ -1999,6 +2177,36 @@ async function acceptService(event, serviceId) {
     form.dataset.submitting = "";
     form.querySelectorAll("button").forEach((button) => (button.disabled = false));
     showToast(error.message);
+  }
+}
+
+async function lookupVehicleForForm(form) {
+  const plate = normalizePlate(form.elements.plate.value);
+  const status = form.querySelector("[data-vehicle-status]");
+  if (!plate) {
+    showToast("Informe a placa antes de pesquisar.");
+    form.elements.plate.focus();
+    return;
+  }
+  const button = form.querySelector("[data-lookup-vehicle]");
+  button.disabled = true;
+  status.textContent = "Consultando placa...";
+  try {
+    const data = await api(`/api/vehicles/lookup?plate=${encodeURIComponent(plate)}`);
+    const vehicle = data.vehicle || {};
+    form.elements.vehicleBrand.value = vehicle.brand || "";
+    form.elements.vehicleModel.value = vehicle.model || "";
+    form.elements.vehicleYear.value = vehicle.year || "";
+    form.elements.vehicleColor.value = vehicle.color || "";
+    form.dataset.vehicleSource = data.source || "manual";
+    status.textContent = data.found
+      ? `Dados carregados (${data.source === "local" ? "cadastro existente" : "consulta externa"}). Confira antes de aceitar.`
+      : "Nenhum dado encontrado. Preencha manualmente e continue o aceite.";
+  } catch (error) {
+    status.textContent = "Consulta indisponível. Preencha manualmente e continue o aceite.";
+    showToast(error.message);
+  } finally {
+    button.disabled = false;
   }
 }
 

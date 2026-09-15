@@ -442,6 +442,15 @@
                 <button class="button button-primary" type="submit">Salvar meus dados</button>
               </div>
             </form>
+            <section class="profile-collaborators card" id="profileCollaboratorsSection" hidden>
+              <div class="tv-form-header">
+                <div>
+                  <h3>Colaboradores</h3>
+                  <p>Gerencie função, status de acesso e dados dos colaboradores sem apagar histórico.</p>
+                </div>
+              </div>
+              <div class="team-list" id="profileCollaboratorsList"></div>
+            </section>
           </div>
         </section>
 
@@ -557,6 +566,14 @@
                 <label class="field">
                   <span>Senha inicial</span>
                   <input id="teamPassword" type="password" minlength="8" placeholder="Mínimo de 8 caracteres" required />
+                </label>
+                <label class="field" id="teamRoleField">
+                  <span>Função</span>
+                  <select id="teamRole">
+                    <option value="employee">Mecânico</option>
+                    <option value="reception">Recepção</option>
+                    <option value="manager">Gestor</option>
+                  </select>
                 </label>
                 <label class="field" id="organizationField">
                   <span>Nome fantasia / oficina</span>

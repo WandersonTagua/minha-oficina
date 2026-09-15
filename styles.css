@@ -1562,7 +1562,7 @@ select {
 .team-row,
 .attendance-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 10px;
   align-items: center;
   padding: 11px;
@@ -1692,6 +1692,13 @@ select {
 
 .attendance-row {
   grid-template-columns: auto minmax(0, 1fr);
+}
+
+.profile-collaborators {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 22px;
 }
 
 .team-row strong,

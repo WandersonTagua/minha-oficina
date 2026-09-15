@@ -14,6 +14,8 @@ const devSeedKey = process.env.DEV_SEED_KEY || ownerSetupKey;
 const vapidSubject = process.env.VAPID_SUBJECT || "mailto:cgerenciador@gmail.com";
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "";
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || "";
+const vehicleApiUrl = process.env.VEHICLE_API_URL || "";
+const vehicleApiKey = process.env.VEHICLE_API_KEY || "";
 const sessions = new Map();
 const loginAttempts = new Map();
 
@@ -62,6 +64,7 @@ function createEmptyStore() {
     registrationInvites: [],
     attendance: [],
     services: [],
+    vehicles: [],
     push: {
       subscriptions: [],
       vapid: null,
@@ -87,6 +90,7 @@ function readStore() {
     store.registrationInvites ||= [];
     store.attendance ||= [];
     store.services ||= [];
+    store.vehicles ||= [];
     store.push ||= {};
     store.push.subscriptions ||= [];
     store.tv ||= createEmptyStore().tv;
@@ -104,6 +108,7 @@ function migrateStore(store) {
   store.push ||= {};
   store.push.subscriptions ||= [];
   store.registrationInvites ||= [];
+  store.vehicles ||= [];
   if (!vapidPublicKey && !vapidPrivateKey && !store.push.vapid) {
     store.push.vapid = webPush.generateVAPIDKeys();
     changed = true;
@@ -113,9 +118,67 @@ function migrateStore(store) {
       user.role = index === 0 ? "owner" : "manager";
       changed = true;
     }
+    if (!["owner", "manager", "employee", "reception"].includes(user.role)) {
+      user.role = "employee";
+      changed = true;
+    }
+    if (user.active === undefined) {
+      user.active = true;
+      changed = true;
+    }
     if (user.role === "manager" && !user.organizationId) {
       const organization = createOrganization(store, user.profile?.shop || user.name || "Oficina");
       user.organizationId = organization.id;
+      changed = true;
+    }
+  });
+  (store.attendance || []).forEach((entry) => {
+    if (!entry.id) {
+      entry.id = crypto.randomUUID();
+      changed = true;
+    }
+    if (!entry.arrivedAt) {
+      entry.arrivedAt = entry.checkedInAt || new Date().toISOString();
+      changed = true;
+    }
+    if (!entry.queuePositionAt) {
+      entry.queuePositionAt = entry.checkedInAt || entry.arrivedAt;
+      changed = true;
+    }
+    if (!entry.queueEvents) {
+      entry.queueEvents = [{ type: "check-in", at: entry.arrivedAt }];
+      changed = true;
+    }
+  });
+  (store.services || []).forEach((service) => {
+    if (!service.timeLog) {
+      service.timeLog = {};
+      changed = true;
+    }
+    if (service.acceptedAt && !service.timeLog.startedAt) {
+      service.timeLog.startedAt = service.acceptedAt;
+      changed = true;
+    }
+    if (service.finishedAt && !service.timeLog.finishedAt) {
+      service.timeLog.finishedAt = service.finishedAt;
+      changed = true;
+    }
+    if (!service.acceptance) {
+      service.acceptance = {
+        plate: service.plate || "",
+        mileage: service.mileage || "",
+        dashboardPhoto: service.dashboardPhoto || "",
+        vehicle: service.vehicle || null,
+        acceptedAt: service.acceptedAt || "",
+      };
+      changed = true;
+    }
+    if (service.dashboardPhoto && !service.acceptance.dashboardPhoto) {
+      service.acceptance.dashboardPhoto = service.dashboardPhoto;
+      changed = true;
+    }
+    if (service.plate && service.vehicle) {
+      upsertVehicle(store, service.plate, service.vehicle);
       changed = true;
     }
   });
@@ -213,6 +276,71 @@ function sanitizeText(value, maxLength = 200) {
 
 function onlyDigits(value, maxLength = 30) {
   return String(value || "").replace(/\D/g, "").slice(0, maxLength);
+}
+
+function normalizePlate(value) {
+  return String(value || "").replace(/[^a-z0-9]/gi, "").toLocaleUpperCase("pt-BR").slice(0, 12);
+}
+
+function cleanVehicleData(body = {}) {
+  return {
+    plate: normalizePlate(body.plate),
+    brand: sanitizeText(body.brand || body.marca, 80),
+    model: sanitizeText(body.model || body.modelo, 100),
+    year: sanitizeText(body.year || body.ano, 20),
+    color: sanitizeText(body.color || body.cor, 50),
+    source: sanitizeText(body.source, 40) || "manual",
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function findVehicle(store, plate) {
+  const cleanPlate = normalizePlate(plate);
+  return (store.vehicles || []).find((vehicle) => vehicle.plate === cleanPlate) || null;
+}
+
+function upsertVehicle(store, plate, data = {}) {
+  const vehicle = cleanVehicleData({ ...data, plate });
+  if (!vehicle.plate) return null;
+  store.vehicles ||= [];
+  const existing = findVehicle(store, vehicle.plate);
+  if (existing) {
+    ["brand", "model", "year", "color"].forEach((field) => {
+      if (vehicle[field]) existing[field] = vehicle[field];
+    });
+    existing.source = vehicle.source || existing.source || "manual";
+    existing.updatedAt = vehicle.updatedAt;
+    return existing;
+  }
+  vehicle.id = crypto.randomUUID();
+  store.vehicles.push(vehicle);
+  return vehicle;
+}
+
+async function lookupVehicleFromApi(plate) {
+  if (!vehicleApiUrl) return null;
+  const url = vehicleApiUrl.replace("{plate}", encodeURIComponent(plate));
+  const headers = vehicleApiKey ? { Authorization: `Bearer ${vehicleApiKey}`, "x-api-key": vehicleApiKey } : {};
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(url, { headers, signal: controller.signal });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const vehicle = cleanVehicleData({
+      plate,
+      brand: data.brand || data.marca || data.MARCA,
+      model: data.model || data.modelo || data.MODELO,
+      year: data.year || data.ano || data.anoModelo || data.ANO,
+      color: data.color || data.cor || data.COR,
+      source: "api",
+    });
+    return vehicle.brand || vehicle.model || vehicle.year || vehicle.color ? vehicle : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function sanitizeImageDataUrl(value) {
@@ -381,6 +509,7 @@ function createUserWithPasswordData({ name, email, passwordData, role, organizat
     email,
     role,
     organizationId,
+    active: true,
     passwordSalt: passwordData.salt,
     passwordHash: passwordData.hash,
     profile: {
@@ -392,6 +521,25 @@ function createUserWithPasswordData({ name, email, passwordData, role, organizat
     tools: [],
     createdAt: new Date().toISOString(),
   };
+}
+
+function isOperationalRole(role) {
+  return ["manager", "reception"].includes(role);
+}
+
+function normalizeTeamRole(value, fallback = "employee") {
+  const role = sanitizeText(value, 20);
+  return ["employee", "manager", "reception"].includes(role) ? role : fallback;
+}
+
+function roleLabel(role) {
+  const labels = {
+    owner: "Dono do site",
+    manager: "Gestor",
+    reception: "Recepção",
+    employee: "Mecânico",
+  };
+  return labels[role] || role;
 }
 
 function setUserPassword(user, password) {
@@ -425,6 +573,7 @@ function ensureSeedUser(store, data) {
       shop: data.profile?.shop || "",
     };
     user.tools ||= [];
+    user.active = data.active !== undefined ? Boolean(data.active) : true;
     setUserPassword(user, data.password);
   }
   return user;
@@ -458,6 +607,9 @@ function seedAttendance(store, user, minutesAgo) {
     name: user.name,
     organizationId: user.organizationId,
     checkedInAt,
+    arrivedAt: checkedInAt,
+    queuePositionAt: checkedInAt,
+    queueEvents: [{ type: "check-in", at: checkedInAt }],
     active: true,
   });
 }
@@ -571,6 +723,10 @@ function canManageTeam(user) {
   return user.role === "owner" || user.role === "manager";
 }
 
+function canOperateYard(user) {
+  return isOperationalRole(user.role);
+}
+
 function ensureTeamAccess(user, response) {
   if (!canManageTeam(user)) {
     sendJson(response, 403, { error: "Acesso restrito ao gestor." });
@@ -580,9 +736,10 @@ function ensureTeamAccess(user, response) {
 }
 
 function attendanceQueue(store, organizationId) {
+  const activeUsers = new Set((store.users || []).filter((user) => user.active !== false).map((user) => user.id));
   return (store.attendance || [])
-    .filter((entry) => entry.active && (!organizationId || entry.organizationId === organizationId))
-    .sort((a, b) => new Date(a.checkedInAt) - new Date(b.checkedInAt));
+    .filter((entry) => entry.active && activeUsers.has(entry.userId) && (!organizationId || entry.organizationId === organizationId))
+    .sort((a, b) => new Date(a.queuePositionAt || a.checkedInAt) - new Date(b.queuePositionAt || b.checkedInAt));
 }
 
 function isUserPresent(store, userId) {
@@ -608,7 +765,13 @@ function availableAttendanceQueue(store, organizationId) {
 
 function moveMechanicToEndOfQueue(store, userId) {
   const entry = (store.attendance || []).find((item) => item.userId === userId && item.active);
-  if (entry) entry.checkedInAt = new Date().toISOString();
+  if (entry) {
+    const now = new Date().toISOString();
+    entry.queuePositionAt = now;
+    entry.lastReturnedAt = now;
+    entry.queueEvents ||= [];
+    entry.queueEvents.push({ type: "return-to-queue", at: now });
+  }
 }
 
 function publicAttendance(entry) {
@@ -616,11 +779,15 @@ function publicAttendance(entry) {
     userId: entry.userId,
     name: entry.name,
     organizationId: entry.organizationId,
-    checkedInAt: entry.checkedInAt,
+    checkedInAt: entry.arrivedAt || entry.checkedInAt,
+    arrivedAt: entry.arrivedAt || entry.checkedInAt,
+    queuePositionAt: entry.queuePositionAt || entry.checkedInAt,
+    lastReturnedAt: entry.lastReturnedAt || "",
   };
 }
 
 function publicService(service) {
+  const acceptance = service.acceptance || {};
   return {
     id: service.id,
     organizationId: service.organizationId,
@@ -634,7 +801,16 @@ function publicService(service) {
     status: service.status,
     plate: service.plate || "",
     mileage: service.mileage || "",
-    dashboardPhoto: service.dashboardPhoto || "",
+    dashboardPhoto: acceptance.dashboardPhoto || service.dashboardPhoto || "",
+    acceptance: {
+      plate: acceptance.plate || service.plate || "",
+      mileage: acceptance.mileage || service.mileage || "",
+      dashboardPhoto: acceptance.dashboardPhoto || service.dashboardPhoto || "",
+      acceptedAt: acceptance.acceptedAt || service.acceptedAt || "",
+      vehicle: acceptance.vehicle || service.vehicle || null,
+    },
+    vehicle: acceptance.vehicle || service.vehicle || null,
+    timeLog: service.timeLog || {},
     rejectionReason: service.rejectionReason || "",
     createdAt: service.createdAt,
     acceptedAt: service.acceptedAt || "",
@@ -653,7 +829,7 @@ function activeServiceStatuses() {
 function servicesPayload(store, user) {
   const organizationId = user.organizationId;
   const services = (store.services || []).filter((service) => service.organizationId === organizationId);
-  if (user.role === "manager") {
+  if (canOperateYard(user)) {
     return {
       availableMechanics: availableAttendanceQueue(store, organizationId).map(publicAttendance),
       active: services
@@ -688,6 +864,8 @@ function publicTeamUser(user, store) {
     name: user.name,
     email: user.email,
     role: user.role,
+    roleLabel: roleLabel(user.role),
+    active: user.active !== false,
     organizationId: user.organizationId || "",
     organizationName: organization?.name || "",
     organizationLegalName: organization?.legalName || "",
@@ -756,6 +934,8 @@ function publicUser(user, store = readStore()) {
     name: user.name,
     email: user.email,
     role: user.role || "manager",
+    roleLabel: roleLabel(user.role || "manager"),
+    active: user.active !== false,
     organizationId: user.organizationId || "",
     organizationName: organization?.name || "",
     organizationLegalName: organization?.legalName || "",
@@ -868,8 +1048,13 @@ function requireUser(request, response) {
     sendJson(response, 401, { error: "Sua sessão não é mais válida." });
     return null;
   }
+  if (user.active === false) {
+    sessions.delete(session.token);
+    sendJson(response, 403, { error: "Seu acesso está desativado. Fale com o responsável pela oficina." });
+    return null;
+  }
   const organization = findOrganization(store, user.organizationId);
-  if (["manager", "employee"].includes(user.role) && organization?.subscription?.status === "blocked") {
+  if (["manager", "employee", "reception"].includes(user.role) && organization?.subscription?.status === "blocked") {
     sessions.delete(session.token);
     sendJson(response, 403, { error: "Cadastro da oficina bloqueado. Fale com o gestor do site." });
     return null;
@@ -1042,8 +1227,12 @@ async function handleApi(request, response, pathname) {
       sendJson(response, 401, { error: "E-mail ou senha incorretos." });
       return;
     }
+    if (user.active === false) {
+      sendJson(response, 403, { error: "Seu acesso está desativado. Fale com o responsável pela oficina." });
+      return;
+    }
     const organization = findOrganization(store, user.organizationId);
-    if (["manager", "employee"].includes(user.role) && organization?.subscription?.status === "blocked") {
+    if (["manager", "employee", "reception"].includes(user.role) && organization?.subscription?.status === "blocked") {
       sendJson(response, 403, { error: "Cadastro da oficina bloqueado. Fale com o gestor do site." });
       return;
     }
@@ -1116,7 +1305,7 @@ async function handleApi(request, response, pathname) {
     const users = context.user.role === "owner"
       ? context.store.users.filter((user) => user.role === "manager")
       : context.store.users.filter(
-          (user) => user.role === "employee" && user.organizationId === context.user.organizationId,
+          (user) => ["employee", "reception"].includes(user.role) && user.organizationId === context.user.organizationId,
         );
     sendJson(response, 200, {
       role: context.user.role,
@@ -1126,6 +1315,74 @@ async function handleApi(request, response, pathname) {
         ? (context.store.registrationInvites || []).map(publicRegistrationInvite)
         : [],
     });
+    return;
+  }
+
+  const teamMemberMatch = pathname.match(/^\/api\/team\/([^/]+)$/);
+  if (teamMemberMatch && request.method === "PUT") {
+    if (!ensureTeamAccess(context.user, response)) return;
+    const target = context.store.users.find((user) => user.id === teamMemberMatch[1]);
+    if (!target) {
+      sendJson(response, 404, { error: "Usuário não encontrado." });
+      return;
+    }
+    const isOwnerEditingManager = context.user.role === "owner" && target.role === "manager";
+    const isManagerEditingOwnTeam = context.user.role === "manager" &&
+      target.organizationId === context.user.organizationId &&
+      ["employee", "reception"].includes(target.role);
+    if (!isOwnerEditingManager && !isManagerEditingOwnTeam) {
+      sendJson(response, 403, { error: "Você não tem permissão para editar este cadastro." });
+      return;
+    }
+    const body = await readJsonBody(request);
+    const name = sanitizeText(body.name, 100);
+    const email = normalizeEmail(body.email);
+    if (name.length < 2 || !email.includes("@")) {
+      sendJson(response, 400, { error: "Informe nome e e-mail válido." });
+      return;
+    }
+    const emailInUse = context.store.users.some((user) => user.id !== target.id && user.email === email);
+    if (emailInUse) {
+      sendJson(response, 409, { error: "Já existe uma conta com este e-mail." });
+      return;
+    }
+    target.name = name;
+    target.email = email;
+    target.active = body.active !== false;
+    target.profile ||= {};
+    target.profile.name = name;
+    target.profile.phone = sanitizeText(body.phone ?? target.profile.phone, 30);
+    target.profile.specialty = sanitizeText(body.specialty ?? target.profile.specialty, 100);
+    const password = String(body.password || "");
+    if (password) {
+      if (password.length < 8) {
+        sendJson(response, 400, { error: "A nova senha precisa ter pelo menos 8 caracteres." });
+        return;
+      }
+      setUserPassword(target, password);
+    }
+    if (isManagerEditingOwnTeam) {
+      target.role = normalizeTeamRole(body.role, target.role);
+      if (target.role === "manager") target.role = "reception";
+    }
+    if (isOwnerEditingManager) {
+      const organization = findOrganization(context.store, target.organizationId);
+      if (organization) {
+        organization.name = sanitizeText(body.organizationName, 120) || organization.name;
+        organization.legalName = sanitizeText(body.organizationLegalName, 160) || organization.legalName;
+        organization.phone = sanitizeText(body.organizationPhone, 30);
+        organization.email = normalizeEmail(body.organizationEmail);
+        organization.address = sanitizeText(body.organizationAddress, 220) || organization.address;
+        organization.city = sanitizeText(body.organizationCity, 80) || organization.city;
+        organization.state = sanitizeText(body.organizationState, 2).toLocaleUpperCase("pt-BR") || organization.state;
+        target.profile.shop = organization.name;
+      }
+    }
+    writeStore(context.store);
+    const users = context.user.role === "owner"
+      ? context.store.users.filter((user) => user.role === "manager")
+      : context.store.users.filter((user) => ["employee", "reception"].includes(user.role) && user.organizationId === context.user.organizationId);
+    sendJson(response, 200, { user: publicTeamUser(target, context.store), users: users.map((user) => publicTeamUser(user, context.store)) });
     return;
   }
 
@@ -1283,6 +1540,9 @@ async function handleApi(request, response, pathname) {
       });
       organizationId = organization.id;
       profile = { shop: organization.name };
+    } else {
+      role = normalizeTeamRole(body.role, "employee");
+      if (role === "manager") role = "reception";
     }
 
     const user = createUser({
@@ -1352,6 +1612,10 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "POST" && pathname === "/api/attendance/check-in") {
+    if (context.user.role !== "employee") {
+      sendJson(response, 403, { error: "Apenas mecânicos podem marcar presença na fila." });
+      return;
+    }
     if (!context.user.organizationId) {
       sendJson(response, 400, { error: "Usuário sem oficina vinculada." });
       return;
@@ -1383,11 +1647,16 @@ async function handleApi(request, response, pathname) {
       (entry) => entry.userId === context.user.id && entry.active,
     );
     if (!existing) {
+      const now = new Date().toISOString();
       context.store.attendance.push({
+        id: crypto.randomUUID(),
         userId: context.user.id,
         name: context.user.name,
         organizationId: context.user.organizationId,
-        checkedInAt: new Date().toISOString(),
+        checkedInAt: now,
+        arrivedAt: now,
+        queuePositionAt: now,
+        queueEvents: [{ type: "check-in", at: now }],
         active: true,
       });
     }
@@ -1404,12 +1673,18 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "POST" && pathname === "/api/attendance/check-out") {
+    if (context.user.role !== "employee") {
+      sendJson(response, 403, { error: "Apenas mecânicos podem encerrar presença na fila." });
+      return;
+    }
     let changed = false;
     (context.store.services || []).forEach((service) => {
       if (service.mechanicId !== context.user.id || !["pending", "running"].includes(service.status)) return;
       service.pausedFromStatus = service.status;
       service.status = "paused";
       service.pausedAt = new Date().toISOString();
+      service.timeLog ||= {};
+      service.timeLog.pausedAt = service.pausedAt;
       changed = true;
     });
     context.store.attendance = (context.store.attendance || []).map((entry) => {
@@ -1433,9 +1708,32 @@ async function handleApi(request, response, pathname) {
     return;
   }
 
+  if (request.method === "GET" && pathname === "/api/vehicles/lookup") {
+    const params = new URL(request.url, `http://${request.headers.host}`).searchParams;
+    const plate = normalizePlate(params.get("plate"));
+    if (!plate) {
+      sendJson(response, 400, { error: "Informe a placa para consulta." });
+      return;
+    }
+    const existing = findVehicle(context.store, plate);
+    if (existing) {
+      sendJson(response, 200, { found: true, source: "local", vehicle: existing });
+      return;
+    }
+    const apiVehicle = await lookupVehicleFromApi(plate);
+    if (apiVehicle) {
+      const vehicle = upsertVehicle(context.store, plate, apiVehicle);
+      writeStore(context.store);
+      sendJson(response, 200, { found: true, source: "api", vehicle });
+      return;
+    }
+    sendJson(response, 200, { found: false, source: vehicleApiUrl ? "api" : "none", vehicle: { plate } });
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/api/services") {
-    if (context.user.role !== "manager") {
-      sendJson(response, 403, { error: "Apenas o gestor pode despachar serviÃ§os." });
+    if (!canOperateYard(context.user)) {
+      sendJson(response, 403, { error: "Apenas gestor ou recepção podem despachar serviços." });
       return;
     }
     const body = await readJsonBody(request);
@@ -1455,6 +1753,7 @@ async function handleApi(request, response, pathname) {
       (user) =>
         user.id === mechanicId &&
         user.role === "employee" &&
+        user.active !== false &&
         user.organizationId === context.user.organizationId,
     );
     if (!mechanic) {
@@ -1473,6 +1772,7 @@ async function handleApi(request, response, pathname) {
       notes,
       status: "pending",
       createdAt: new Date().toISOString(),
+      timeLog: {},
     };
     context.store.services.push(service);
     writeStore(context.store);
@@ -1513,12 +1813,29 @@ async function handleApi(request, response, pathname) {
         });
         return;
       }
+      const vehicle = cleanVehicleData({
+        ...(body.vehicle || {}),
+        plate,
+        source: body.vehicle?.source || "manual",
+      });
+      const savedVehicle = upsertVehicle(context.store, plate, vehicle) || { plate };
+      const acceptedAt = new Date().toISOString();
       service.status = "running";
       service.plate = plate;
       service.mileage = mileage;
-      service.dashboardPhoto = dashboardPhoto;
+      service.dashboardPhoto = dashboardPhoto.slice(0, 6_000_000);
+      service.vehicle = savedVehicle;
+      service.acceptance = {
+        plate,
+        mileage,
+        dashboardPhoto: service.dashboardPhoto,
+        vehicle: savedVehicle,
+        acceptedAt,
+      };
       service.mechanicUpdates ||= [];
-      service.acceptedAt = new Date().toISOString();
+      service.acceptedAt = acceptedAt;
+      service.timeLog ||= {};
+      service.timeLog.startedAt = acceptedAt;
       writeStore(context.store);
       sendJson(response, 200, servicesPayload(context.store, context.user));
       return;
@@ -1559,6 +1876,8 @@ async function handleApi(request, response, pathname) {
       }
       service.status = service.pausedFromStatus || "running";
       service.resumedAt = new Date().toISOString();
+      service.timeLog ||= {};
+      service.timeLog.lastResumedAt = service.resumedAt;
       writeStore(context.store);
       sendJson(response, 200, servicesPayload(context.store, context.user));
       return;
@@ -1582,7 +1901,10 @@ async function handleApi(request, response, pathname) {
       service.status = "rejected";
       service.rejectionReason = rejectionReason;
       service.rejectedAt = new Date().toISOString();
+      service.timeLog ||= {};
+      service.timeLog.rejectedAt = service.rejectedAt;
       moveMechanicToEndOfQueue(context.store, context.user.id);
+      service.timeLog.returnedToQueueAt = new Date().toISOString();
       writeStore(context.store);
       sendJson(response, 200, servicesPayload(context.store, context.user));
       return;
@@ -1604,6 +1926,9 @@ async function handleApi(request, response, pathname) {
       service.status = "finished";
       service.finishedAt = new Date().toISOString();
       moveMechanicToEndOfQueue(context.store, context.user.id);
+      service.timeLog ||= {};
+      service.timeLog.finishedAt = service.finishedAt;
+      service.timeLog.returnedToQueueAt = new Date().toISOString();
       writeStore(context.store);
       sendJson(response, 200, servicesPayload(context.store, context.user));
       return;
@@ -1617,6 +1942,9 @@ async function handleApi(request, response, pathname) {
       service.status = "approval_paused";
       service.approvalPausedAt = new Date().toISOString();
       moveMechanicToEndOfQueue(context.store, context.user.id);
+      service.timeLog ||= {};
+      service.timeLog.approvalPausedAt = service.approvalPausedAt;
+      service.timeLog.returnedToQueueAt = new Date().toISOString();
       writeStore(context.store);
       sendJson(response, 200, servicesPayload(context.store, context.user));
       return;
@@ -1624,9 +1952,12 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "PUT" && pathname === "/api/tv") {
-    if (!ensureTeamAccess(context.user, response)) return;
+    if (!canOperateYard(context.user) && context.user.role !== "owner") {
+      sendJson(response, 403, { error: "Acesso restrito ao gestor ou recepção." });
+      return;
+    }
     const settings = cleanTvSettings(await readJsonBody(request), context.store.tv);
-    if (context.user.role === "manager" && context.user.organizationId) {
+    if (canOperateYard(context.user) && context.user.organizationId) {
       const organization = context.store.organizations.find((item) => item.id === context.user.organizationId);
       if (organization) organization.tv = settings;
     } else {
@@ -1638,7 +1969,10 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "POST" && pathname === "/api/tv/media") {
-    if (!ensureTeamAccess(context.user, response)) return;
+    if (!canOperateYard(context.user) && context.user.role !== "owner") {
+      sendJson(response, 403, { error: "Acesso restrito ao gestor ou recepção." });
+      return;
+    }
     const contentType = String(request.headers["content-type"] || "");
     if (!contentType.startsWith("video/")) {
       sendJson(response, 400, { error: "Envie um arquivo de vídeo válido." });
@@ -1665,7 +1999,7 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "GET" && pathname === "/api/tools") {
-    const mechanicTools = context.user.role === "manager"
+    const mechanicTools = canOperateYard(context.user)
       ? context.store.users
           .filter((user) => user.role === "employee" && user.organizationId === context.user.organizationId)
           .map((user) => ({
@@ -1727,7 +2061,7 @@ async function handleApi(request, response, pathname) {
       shop: sanitizeText(body.shop, 120),
     };
     context.user.name = context.user.profile.name;
-    if (context.user.role === "manager" && context.user.organizationId) {
+    if (isOperationalRole(context.user.role) && context.user.organizationId) {
       const organization = findOrganization(context.store, context.user.organizationId);
       if (organization) {
         const latitude = normalizeCoordinate(body.workshopLatitude);
