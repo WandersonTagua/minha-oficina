@@ -59,10 +59,14 @@ test("fluxos críticos da oficina", async (context) => {
   });
 
   await context.test("documentos públicos e cabeçalhos de segurança estão disponíveis", async () => {
+    const home = await request(baseUrl, "/");
     const terms = await request(baseUrl, "/termos");
     const privacy = await request(baseUrl, "/privacidade");
+    assert.equal(home.response.status, 200);
     assert.equal(terms.response.status, 200);
     assert.equal(privacy.response.status, 200);
+    assert.match(home.body, /Teste grátis por 7 dias/);
+    assert.match(home.body, /armazenados por 60 dias/);
     assert.match(terms.body, /Termos de Uso/);
     assert.match(privacy.body, /Política de Privacidade/);
     assert.equal(terms.response.headers.get("x-frame-options"), "DENY");

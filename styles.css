@@ -1595,6 +1595,30 @@ select {
   font-size: 9px;
 }
 
+.trial-disclosure {
+  padding: 15px 16px;
+  border: 1px solid rgba(244, 166, 25, 0.5);
+  border-left: 4px solid var(--gold-500);
+  border-radius: 12px;
+  color: var(--navy-800);
+  background: linear-gradient(135deg, #fff8e8, #fffdf7);
+  box-shadow: 0 8px 20px rgba(126, 82, 0, 0.07);
+}
+
+.trial-disclosure strong {
+  display: block;
+  margin-bottom: 6px;
+  font-family: "Manrope", sans-serif;
+  font-size: 13px;
+}
+
+.auth-form .trial-disclosure p {
+  margin: 4px 0 0;
+  color: var(--slate-600);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
 .terms-box {
   padding: 14px;
   border: 1px solid rgba(202, 213, 220, 0.82);
