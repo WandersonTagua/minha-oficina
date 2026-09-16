@@ -83,6 +83,9 @@ Depois que o serviço for criado, abra **Environment** no Render e troque:
 ```text
 OWNER_SETUP_KEY=trocar-este-codigo-no-render
 DEV_SEED_KEY=trocar-este-codigo-no-render
+VEHICLE_API_PROVIDER=apibrasil
+VEHICLE_API_URL=https://gateway.apibrasil.io/api/v2/vehicles/dados
+VEHICLE_API_KEY=sua-chave-da-api-brasil
 ```
 
 Use um código seu, por exemplo uma frase com letras, números e símbolos. Esse
@@ -90,6 +93,10 @@ código será exigido somente para criar o primeiro dono da plataforma.
 
 `DEV_SEED_KEY` protege a rota que recria dados de teste. Use outro código
 secreto ou o mesmo do dono enquanto estiver testando.
+
+`VEHICLE_API_KEY` é a chave da API Brasil usada para pesquisar dados do veículo
+pela placa. Cole apenas no Render, não salve essa chave no GitHub. Pode colar a
+chave pura ou já começando com `Bearer`; o sistema aceita os dois formatos.
 
 ### Recriar ambiente de teste
 

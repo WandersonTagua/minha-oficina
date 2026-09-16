@@ -65,6 +65,20 @@ Antes de criar o primeiro usuário em produção, altere a variável
 `OWNER_SETUP_KEY` no Render para um código secreto seu. Sem esse código, ninguém
 consegue virar dono da plataforma.
 
+### Consulta de placa
+
+Para preencher marca, modelo, ano e cor pela placa usando a API Brasil, configure
+estas variáveis no Render:
+
+```text
+VEHICLE_API_PROVIDER=apibrasil
+VEHICLE_API_URL=https://gateway.apibrasil.io/api/v2/vehicles/dados
+VEHICLE_API_KEY=sua-chave-da-api-brasil
+```
+
+Não salve a chave no GitHub. Se a consulta falhar ou a placa não for encontrada,
+o aceite do serviço continua permitindo preenchimento manual.
+
 ## Próximos passos para produção
 
 - Trocar o modo gratuito por disco persistente ou banco de dados

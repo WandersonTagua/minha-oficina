@@ -17,3 +17,7 @@ services:
         value: trocar-este-codigo-no-render
       - key: DEV_SEED_KEY
         value: trocar-este-codigo-no-render
+      - key: VEHICLE_API_PROVIDER
+        value: apibrasil
+      - key: VEHICLE_API_URL
+        value: https://gateway.apibrasil.io/api/v2/vehicles/dados

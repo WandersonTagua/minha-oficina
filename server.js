@@ -14,8 +14,10 @@ const devSeedKey = process.env.DEV_SEED_KEY || ownerSetupKey;
 const vapidSubject = process.env.VAPID_SUBJECT || "mailto:cgerenciador@gmail.com";
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "";
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || "";
+const vehicleApiProvider = String(process.env.VEHICLE_API_PROVIDER || "").trim().toLocaleLowerCase("pt-BR");
 const vehicleApiUrl = process.env.VEHICLE_API_URL || "";
 const vehicleApiKey = process.env.VEHICLE_API_KEY || "";
+const vehicleApiType = process.env.VEHICLE_API_TYPE || "";
 const sessions = new Map();
 const loginAttempts = new Map();
 
@@ -317,25 +319,79 @@ function upsertVehicle(store, plate, data = {}) {
   return vehicle;
 }
 
+function firstFilledValue(...values) {
+  for (const value of values) {
+    if (value === undefined || value === null) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function vehicleResponseCandidates(data) {
+  if (!data || typeof data !== "object") return [];
+  const candidates = [data];
+  ["data", "dados", "response", "result", "resultado", "vehicle", "veiculo", "VEICULO"].forEach((field) => {
+    const value = data[field];
+    if (value && typeof value === "object") {
+      candidates.push(value);
+      if (Array.isArray(value)) candidates.push(...value.filter((item) => item && typeof item === "object"));
+    }
+  });
+  return candidates;
+}
+
+function vehicleFromApiResponse(data, plate, source = "api") {
+  const candidates = vehicleResponseCandidates(data);
+  const read = (...keys) => {
+    for (const item of candidates) {
+      const value = firstFilledValue(...keys.map((key) => item[key]));
+      if (value) return value;
+    }
+    return "";
+  };
+  const vehicle = cleanVehicleData({
+    plate,
+    brand: read("brand", "marca", "MARCA", "marca_veiculo", "Marca"),
+    model: read("model", "modelo", "MODELO", "modelo_veiculo", "Modelo", "versao", "VERSAO"),
+    year: read("year", "ano", "ANO", "anoModelo", "ano_modelo", "ano_fabricacao", "anoFabricacao"),
+    color: read("color", "cor", "COR", "cor_veiculo", "Cor"),
+    source,
+  });
+  return vehicle.brand || vehicle.model || vehicle.year || vehicle.color ? vehicle : null;
+}
+
+function vehicleAuthorizationHeader() {
+  if (!vehicleApiKey) return {};
+  const value = vehicleApiKey.trim();
+  return {
+    Authorization: /^bearer\s+/i.test(value) ? value : `Bearer ${value}`,
+    "x-api-key": value,
+  };
+}
+
 async function lookupVehicleFromApi(plate) {
   if (!vehicleApiUrl) return null;
+  const provider = vehicleApiProvider || (vehicleApiUrl.includes("apibrasil") ? "apibrasil" : "generic");
   const url = vehicleApiUrl.replace("{plate}", encodeURIComponent(plate));
-  const headers = vehicleApiKey ? { Authorization: `Bearer ${vehicleApiKey}`, "x-api-key": vehicleApiKey } : {};
+  const headers = vehicleAuthorizationHeader();
+  const options = { headers, signal: null };
+  if (provider === "apibrasil") {
+    const body = { placa: plate, homolog: false };
+    if (vehicleApiType) body.tipo = vehicleApiType;
+    options.method = "POST";
+    options.headers = { "Content-Type": "application/json" };
+    if (headers.Authorization) options.headers.Authorization = headers.Authorization;
+    options.body = JSON.stringify(body);
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const response = await fetch(url, { headers, signal: controller.signal });
+    options.signal = controller.signal;
+    const response = await fetch(url, options);
     if (!response.ok) return null;
     const data = await response.json();
-    const vehicle = cleanVehicleData({
-      plate,
-      brand: data.brand || data.marca || data.MARCA,
-      model: data.model || data.modelo || data.MODELO,
-      year: data.year || data.ano || data.anoModelo || data.ANO,
-      color: data.color || data.cor || data.COR,
-      source: "api",
-    });
-    return vehicle.brand || vehicle.model || vehicle.year || vehicle.color ? vehicle : null;
+    return vehicleFromApiResponse(data, plate, provider === "apibrasil" ? "apibrasil" : "api");
   } catch {
     return null;
   } finally {
@@ -1724,7 +1780,7 @@ async function handleApi(request, response, pathname) {
     if (apiVehicle) {
       const vehicle = upsertVehicle(context.store, plate, apiVehicle);
       writeStore(context.store);
-      sendJson(response, 200, { found: true, source: "api", vehicle });
+      sendJson(response, 200, { found: true, source: vehicle.source || "api", vehicle });
       return;
     }
     sendJson(response, 200, { found: false, source: vehicleApiUrl ? "api" : "none", vehicle: { plate } });
