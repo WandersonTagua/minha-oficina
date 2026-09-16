@@ -14,9 +14,9 @@ services:
       - key: DATA_FILE
         value: /tmp/store.json
       - key: OWNER_SETUP_KEY
-        value: trocar-este-codigo-no-render
+        sync: false
       - key: DEV_SEED_KEY
-        value: trocar-este-codigo-no-render
+        sync: false
       - key: VEHICLE_API_PROVIDER
         value: apibrasil
       - key: VEHICLE_API_URL

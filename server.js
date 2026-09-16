@@ -9,8 +9,8 @@ const host = process.env.HOST || "127.0.0.1";
 const root = __dirname;
 const dataFile = process.env.DATA_FILE || path.join(root, "data", "store.json");
 const mediaDir = process.env.MEDIA_DIR || path.join(path.dirname(dataFile), "media");
-const ownerSetupKey = process.env.OWNER_SETUP_KEY || "";
-const devSeedKey = process.env.DEV_SEED_KEY || ownerSetupKey;
+const ownerSetupKey = String(process.env.OWNER_SETUP_KEY || "").trim();
+const devSeedKey = String(process.env.DEV_SEED_KEY || ownerSetupKey).trim();
 const vapidSubject = process.env.VAPID_SUBJECT || "mailto:cgerenciador@gmail.com";
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "";
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || "";
@@ -1200,7 +1200,7 @@ async function handleApi(request, response, pathname) {
   if (["GET", "POST"].includes(request.method) && pathname === "/api/dev/seed") {
     const body = request.method === "POST" ? await readJsonBody(request) : {};
     const params = new URL(request.url, `http://${request.headers.host}`).searchParams;
-    const providedKey = String(request.headers["x-seed-key"] || body.key || params.get("key") || "");
+    const providedKey = String(request.headers["x-seed-key"] || body.key || params.get("key") || "").trim();
     if (!devSeedKey || providedKey !== devSeedKey) {
       sendJson(response, 403, { error: "Chave de teste inválida." });
       return;
