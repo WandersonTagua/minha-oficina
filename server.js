@@ -21,6 +21,7 @@ const vehicleApiUrl = process.env.VEHICLE_API_URL || "";
 const vehicleApiKey = process.env.VEHICLE_API_KEY || "";
 const vehicleApiType = process.env.VEHICLE_API_TYPE || "";
 const termsVersion = "2026-09-16";
+const subscriptionRetentionDays = 60;
 const sessions = new Map();
 const loginAttempts = new Map();
 
@@ -194,6 +195,17 @@ function migrateStore(store) {
   (store.organizations || []).forEach((organization) => {
     if (!organization.subscription) {
       organization.subscription = createSubscription("monthly");
+      changed = true;
+    }
+    if (refreshSubscriptionStatus(organization.subscription)) {
+      changed = true;
+    }
+    if (["blocked", "expired"].includes(organization.subscription.status) && !organization.subscription.retentionUntil) {
+      const retentionStart = organization.subscription.blockedAt
+        || organization.subscription.expiredAt
+        || organization.subscription.updatedAt
+        || new Date().toISOString();
+      organization.subscription.retentionUntil = addRetentionPeriod(retentionStart);
       changed = true;
     }
     if (organization.legalName === undefined) {
@@ -463,12 +475,16 @@ function createOrganization(store, name) {
 }
 
 function normalizePlan(plan) {
+  if (plan === "trial") return "trial";
   return plan === "annual" ? "annual" : "monthly";
 }
 
 function addPlanPeriod(fromDate, plan) {
   const date = new Date(fromDate);
-  if (normalizePlan(plan) === "annual") {
+  const cleanPlan = normalizePlan(plan);
+  if (cleanPlan === "trial") {
+    date.setDate(date.getDate() + 7);
+  } else if (cleanPlan === "annual") {
     date.setFullYear(date.getFullYear() + 1);
   } else {
     date.setMonth(date.getMonth() + 1);
@@ -489,18 +505,47 @@ function createSubscription(plan = "monthly") {
 
 function createTrialSubscription() {
   const now = new Date();
-  const expiresAt = new Date(now);
-  expiresAt.setDate(expiresAt.getDate() + 7);
   return {
     plan: "trial",
     status: "active",
-    expiresAt: expiresAt.toISOString(),
+    expiresAt: addPlanPeriod(now, "trial"),
     updatedAt: now.toISOString(),
   };
 }
 
+function addRetentionPeriod(fromDate) {
+  const date = new Date(fromDate);
+  date.setDate(date.getDate() + subscriptionRetentionDays);
+  return date.toISOString();
+}
+
+function refreshSubscriptionStatus(subscription, now = new Date()) {
+  if (!subscription || subscription.status !== "active" || !subscription.expiresAt) return false;
+  const expiresAt = new Date(subscription.expiresAt);
+  if (Number.isNaN(expiresAt.getTime()) || expiresAt > now) return false;
+  subscription.status = "expired";
+  subscription.expiredAt = expiresAt.toISOString();
+  subscription.retentionUntil ||= addRetentionPeriod(now);
+  subscription.updatedAt = now.toISOString();
+  return true;
+}
+
 function publicOrganizationSubscription(organization) {
-  return organization?.subscription || createSubscription("monthly");
+  const subscription = organization?.subscription || createSubscription("monthly");
+  const expiresAt = subscription.expiresAt ? new Date(subscription.expiresAt) : null;
+  const remainingMilliseconds = expiresAt && !Number.isNaN(expiresAt.getTime())
+    ? expiresAt.getTime() - Date.now()
+    : null;
+  const daysRemaining = remainingMilliseconds === null ? null : Math.max(0, Math.ceil(remainingMilliseconds / 86400000));
+  return {
+    ...subscription,
+    daysRemaining,
+    expiringSoon: subscription.status === "active" && daysRemaining !== null && daysRemaining <= 3,
+    retentionDays: subscriptionRetentionDays,
+    canDelete: ["blocked", "expired"].includes(subscription.status) && Boolean(
+      subscription.retentionUntil && new Date(subscription.retentionUntil) <= new Date(),
+    ),
+  };
 }
 
 function createOrganizationWithPlan(store, name, plan = "monthly", details = {}) {
@@ -1032,6 +1077,26 @@ function invalidateUserSessions(userId, exceptToken = "") {
   }
 }
 
+function invalidateOrganizationSessions(store, organizationId) {
+  const userIds = new Set(
+    (store.users || []).filter((user) => user.organizationId === organizationId).map((user) => user.id),
+  );
+  for (const [token, session] of sessions.entries()) {
+    if (userIds.has(session.userId)) sessions.delete(token);
+  }
+}
+
+function subscriptionAccessError(organization) {
+  const status = organization?.subscription?.status;
+  if (!status || status === "active") return "";
+  if (status === "expired") {
+    return organization.subscription.plan === "trial"
+      ? "Seu período de teste terminou. Fale com o responsável pela plataforma para escolher um plano."
+      : "A assinatura da oficina venceu. Fale com o responsável pela plataforma para renovar o acesso.";
+  }
+  return "Cadastro da oficina bloqueado. Fale com o responsável pela plataforma.";
+}
+
 function publicUser(user, store = readStore()) {
   const organization = findOrganization(store, user.organizationId);
   return {
@@ -1171,9 +1236,12 @@ function requireUser(request, response) {
     return null;
   }
   const organization = findOrganization(store, user.organizationId);
-  if (["manager", "employee", "reception"].includes(user.role) && organization?.subscription?.status === "blocked") {
+  const accessError = ["manager", "employee", "reception"].includes(user.role)
+    ? subscriptionAccessError(organization)
+    : "";
+  if (accessError) {
     sessions.delete(session.token);
-    sendJson(response, 403, { error: "Cadastro da oficina bloqueado. Fale com o gestor do site." });
+    sendJson(response, 403, { error: accessError, code: organization.subscription.status });
     return null;
   }
   return { store, user, session };
@@ -1372,8 +1440,11 @@ async function handleApi(request, response, pathname) {
       return;
     }
     const organization = findOrganization(store, user.organizationId);
-    if (["manager", "employee", "reception"].includes(user.role) && organization?.subscription?.status === "blocked") {
-      sendJson(response, 403, { error: "Cadastro da oficina bloqueado. Fale com o gestor do site." });
+    const accessError = ["manager", "employee", "reception"].includes(user.role)
+      ? subscriptionAccessError(organization)
+      : "";
+    if (accessError) {
+      sendJson(response, 403, { error: accessError, code: organization.subscription.status });
       return;
     }
     clearLoginAttempts(request);
@@ -1749,19 +1820,31 @@ async function handleApi(request, response, pathname) {
     const action = sanitizeText(body.action, 20);
     organization.subscription ||= createSubscription(body.plan || "monthly");
     const now = new Date();
-    if (body.plan) organization.subscription.plan = normalizePlan(body.plan);
+    const requestedPlan = ["monthly", "annual"].includes(body.plan) ? body.plan : "";
+    if (body.plan && !requestedPlan) {
+      sendJson(response, 400, { error: "Escolha o plano mensal ou anual." });
+      return;
+    }
+    const currentPlan = organization.subscription.plan;
+    const nextPlan = requestedPlan || (currentPlan === "trial" ? "monthly" : normalizePlan(currentPlan));
+    const planChanged = nextPlan !== currentPlan;
 
     if (action === "block") {
       organization.subscription.status = "blocked";
+      organization.subscription.blockedAt = now.toISOString();
+      organization.subscription.retentionUntil = addRetentionPeriod(now);
+      invalidateOrganizationSessions(context.store, organization.id);
     } else if (action === "renew") {
+      organization.subscription.plan = nextPlan;
       organization.subscription.status = "active";
-      const baseDate = organization.subscription.expiresAt && new Date(organization.subscription.expiresAt) > now
+      const baseDate = !planChanged && organization.subscription.expiresAt && new Date(organization.subscription.expiresAt) > now
         ? new Date(organization.subscription.expiresAt)
         : now;
       organization.subscription.expiresAt = addPlanPeriod(baseDate, organization.subscription.plan);
     } else if (action === "activate") {
+      organization.subscription.plan = nextPlan;
       organization.subscription.status = "active";
-      if (!organization.subscription.expiresAt || new Date(organization.subscription.expiresAt) < now) {
+      if (planChanged || !organization.subscription.expiresAt || new Date(organization.subscription.expiresAt) < now) {
         organization.subscription.expiresAt = addPlanPeriod(now, organization.subscription.plan);
       }
     } else {
@@ -1769,12 +1852,90 @@ async function handleApi(request, response, pathname) {
       return;
     }
 
+    if (["activate", "renew"].includes(action)) {
+      delete organization.subscription.expiredAt;
+      delete organization.subscription.blockedAt;
+      delete organization.subscription.retentionUntil;
+    }
     organization.subscription.updatedAt = now.toISOString();
     writeStore(context.store);
     const users = context.store.users
       .filter((user) => user.role === "manager")
       .map((user) => publicTeamUser(user, context.store));
     sendJson(response, 200, { organization, users });
+    return;
+  }
+
+  const organizationDeleteMatch = pathname.match(/^\/api\/organizations\/([^/]+)$/);
+  if (request.method === "DELETE" && organizationDeleteMatch) {
+    if (context.user.role !== "owner") {
+      sendJson(response, 403, { error: "Apenas o dono do site pode excluir uma oficina." });
+      return;
+    }
+    const organization = findOrganization(context.store, organizationDeleteMatch[1]);
+    if (!organization) {
+      sendJson(response, 404, { error: "Oficina não encontrada." });
+      return;
+    }
+    const subscription = publicOrganizationSubscription(organization);
+    if (!subscription.canDelete) {
+      sendJson(response, 409, {
+        error: `Os dados ficam protegidos por ${subscriptionRetentionDays} dias após o bloqueio ou vencimento.`,
+      });
+      return;
+    }
+    const body = await readJsonBody(request);
+    if (sanitizeText(body.confirmation, 120) !== organization.name) {
+      sendJson(response, 400, { error: "Digite exatamente o nome da oficina para confirmar a exclusão." });
+      return;
+    }
+
+    const organizationId = organization.id;
+    const removedServices = (context.store.services || []).filter((service) => service.organizationId === organizationId);
+    const removedPlates = new Set(removedServices.map((service) => normalizePlate(service.plate)).filter(Boolean));
+    const remainingServices = (context.store.services || []).filter((service) => service.organizationId !== organizationId);
+    const retainedPlates = new Set(remainingServices.map((service) => normalizePlate(service.plate)).filter(Boolean));
+    const removedUserIds = new Set(
+      (context.store.users || []).filter((user) => user.organizationId === organizationId).map((user) => user.id),
+    );
+    const removedMediaUrls = new Set(
+      (organization.tv?.playlist || [])
+        .filter((item) => item.type === "video" && String(item.url || "").startsWith("/media/"))
+        .map((item) => item.url),
+    );
+
+    invalidateOrganizationSessions(context.store, organizationId);
+    context.store.organizations = context.store.organizations.filter((item) => item.id !== organizationId);
+    context.store.users = context.store.users.filter((user) => user.organizationId !== organizationId);
+    context.store.attendance = (context.store.attendance || []).filter((entry) => entry.organizationId !== organizationId);
+    context.store.services = remainingServices;
+    context.store.vehicles = (context.store.vehicles || []).filter((vehicle) => {
+      const plate = normalizePlate(vehicle.plate);
+      return !removedPlates.has(plate) || retainedPlates.has(plate);
+    });
+    context.store.registrationInvites = (context.store.registrationInvites || []).filter(
+      (invite) => invite.organizationId !== organizationId,
+    );
+    context.store.push.subscriptions = (context.store.push?.subscriptions || []).filter(
+      (item) => item.organizationId !== organizationId && !removedUserIds.has(item.userId),
+    );
+    writeStore(context.store);
+    const retainedMediaUrls = new Set([
+      ...(context.store.tv?.playlist || []).map((item) => item.url),
+      ...context.store.organizations.flatMap((item) => (item.tv?.playlist || []).map((media) => media.url)),
+    ]);
+    removedMediaUrls.forEach((url) => {
+      if (retainedMediaUrls.has(url)) return;
+      try {
+        fs.unlinkSync(path.join(mediaDir, path.basename(url)));
+      } catch {
+        // O arquivo pode já ter sido removido; a exclusão dos demais dados continua.
+      }
+    });
+    const users = context.store.users
+      .filter((user) => user.role === "manager")
+      .map((user) => publicTeamUser(user, context.store));
+    sendJson(response, 200, { ok: true, users });
     return;
   }
 

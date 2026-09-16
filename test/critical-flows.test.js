@@ -84,18 +84,72 @@ test("fluxos críticos da oficina", async (context) => {
   });
 
   const managerLogin = await login(baseUrl, "gestor@minhaoficina.teste", "12345678");
-  const managerCookie = managerLogin.cookie;
+  let managerCookie = managerLogin.cookie;
+  let ownerCookie = "";
+  let organizationId = "";
   let mechanicId = "";
 
   await context.test("dono visualiza clientes e exporta a plataforma completa", async () => {
     const ownerLogin = await login(baseUrl, "dono@minhaoficina.teste", "12345678");
+    ownerCookie = ownerLogin.cookie;
     const team = await request(baseUrl, "/api/team", { cookie: ownerLogin.cookie });
     assert.equal(team.response.status, 200);
-    assert.ok(team.body.users.some((user) => user.email === "gestor@minhaoficina.teste"));
+    const manager = team.body.users.find((user) => user.email === "gestor@minhaoficina.teste");
+    assert.ok(manager);
+    organizationId = manager.organizationId;
 
     const backup = await request(baseUrl, "/api/backup/export", { cookie: ownerLogin.cookie });
     assert.equal(backup.response.status, 200);
     assert.equal(backup.body.metadata.scope, "platform");
+  });
+
+  await context.test("teste vencido bloqueia acesso e pode ser convertido para plano anual", async () => {
+    const store = JSON.parse(fs.readFileSync(process.env.DATA_FILE, "utf8"));
+    const organization = store.organizations.find((item) => item.id === organizationId);
+    organization.subscription = {
+      plan: "trial",
+      status: "active",
+      expiresAt: new Date(Date.now() - 60000).toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(process.env.DATA_FILE, JSON.stringify(store, null, 2));
+
+    const openSessionDenied = await request(baseUrl, "/api/auth/me", { cookie: managerCookie });
+    assert.equal(openSessionDenied.response.status, 403);
+    assert.equal(openSessionDenied.body.code, "expired");
+
+    const denied = await request(baseUrl, "/api/auth/login", {
+      method: "POST",
+      body: { email: "gestor@minhaoficina.teste", password: "12345678" },
+    });
+    assert.equal(denied.response.status, 403);
+    assert.equal(denied.body.code, "expired");
+    assert.match(denied.body.error, /período de teste terminou/i);
+
+    const team = await request(baseUrl, "/api/team", { cookie: ownerCookie });
+    const expiredManager = team.body.users.find((user) => user.organizationId === organizationId);
+    assert.equal(expiredManager.organizationSubscription.status, "expired");
+    assert.ok(expiredManager.organizationSubscription.retentionUntil);
+
+    const earlyDelete = await request(baseUrl, `/api/organizations/${organizationId}`, {
+      method: "DELETE",
+      cookie: ownerCookie,
+      body: { confirmation: organization.name },
+    });
+    assert.equal(earlyDelete.response.status, 409);
+
+    const activated = await request(baseUrl, `/api/organizations/${organizationId}/subscription`, {
+      method: "POST",
+      cookie: ownerCookie,
+      body: { action: "activate", plan: "annual" },
+    });
+    assert.equal(activated.response.status, 200);
+    const activeManager = activated.body.users.find((user) => user.organizationId === organizationId);
+    assert.equal(activeManager.organizationSubscription.status, "active");
+    assert.equal(activeManager.organizationSubscription.plan, "annual");
+    assert.equal(activeManager.organizationSubscription.retentionUntil, undefined);
+
+    managerCookie = (await login(baseUrl, "gestor@minhaoficina.teste", "12345678")).cookie;
   });
 
   await context.test("gestor enxerga apenas sua equipe e configura a oficina", async () => {

@@ -546,6 +546,22 @@ select {
   box-shadow: 0 8px 26px rgba(9, 28, 44, 0.04);
 }
 
+.subscription-notice {
+  margin: 16px 42px 0;
+  padding: 12px 15px;
+  border: 1px solid rgba(244, 166, 25, 0.48);
+  border-radius: 12px;
+  color: #684300;
+  background: #fff4d8;
+  box-shadow: 0 8px 22px rgba(116, 75, 0, 0.08);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.subscription-notice[hidden] {
+  display: none;
+}
+
 .topbar-title h1 {
   margin: 3px 0 0;
   font-family: "Manrope", sans-serif;
@@ -1752,6 +1768,12 @@ select {
   background: rgba(255, 255, 255, 0.66);
 }
 
+.client-office-details .subscription-warning {
+  color: #8b5800;
+  background: #fff0c8;
+  font-weight: 800;
+}
+
 .subscription-chip {
   padding: 6px 8px;
   border-radius: 999px;
@@ -1820,6 +1842,18 @@ select {
   min-height: 34px;
   padding: 8px 11px;
   font-size: 10px;
+}
+
+.subscription-plan-select {
+  min-height: 34px;
+  padding: 7px 30px 7px 10px;
+  border: 1px solid rgba(202, 213, 220, 0.92);
+  border-radius: 9px;
+  color: var(--slate-700);
+  background: rgba(255, 255, 255, 0.82);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .attendance-row {
@@ -2247,6 +2281,10 @@ select {
 
   .topbar {
     padding: 15px 18px;
+  }
+
+  .subscription-notice {
+    margin: 12px 16px 0;
   }
 
   .topbar-title {

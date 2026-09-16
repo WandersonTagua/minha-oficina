@@ -68,6 +68,7 @@ const elements = {
   sidebar: document.querySelector(".sidebar"),
   topbarEyebrow: document.querySelector("#topbarEyebrow"),
   pageTitle: document.querySelector("#pageTitle"),
+  subscriptionNotice: document.querySelector("#subscriptionNotice"),
   homeSection: document.querySelector("#homeSection"),
   inventorySection: document.querySelector("#inventorySection"),
   profileSection: document.querySelector("#profileSection"),
@@ -224,7 +225,15 @@ async function api(path, options = {}) {
     },
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || "Não foi possível concluir a solicitação.");
+  if (!response.ok) {
+    const error = new Error(body.error || "Não foi possível concluir a solicitação.");
+    error.code = body.code || "";
+    if (["expired", "blocked"].includes(error.code) && state.user) {
+      showAuth();
+      elements.loginError.textContent = error.message;
+    }
+    throw error;
+  }
   return body;
 }
 
@@ -238,6 +247,7 @@ function showAuth() {
   document.body.classList.remove("authenticated");
   document.body.classList.add("auth-pending");
   elements.loginError.textContent = "";
+  elements.subscriptionNotice.hidden = true;
   showInviteRegister(Boolean(state.inviteToken));
 }
 
@@ -269,6 +279,22 @@ function showAuthenticated(user) {
   document.body.classList.remove("auth-pending");
   document.body.classList.add("authenticated");
   renderOrganizationBrand();
+  renderSubscriptionNotice();
+}
+
+function renderSubscriptionNotice() {
+  const subscription = state.user?.organizationSubscription;
+  const shouldShow = state.user?.role !== "owner" && subscription?.expiringSoon;
+  elements.subscriptionNotice.hidden = !shouldShow;
+  if (!shouldShow) {
+    elements.subscriptionNotice.textContent = "";
+    return;
+  }
+  const days = subscription.daysRemaining;
+  const deadline = days === 0 ? "hoje" : days === 1 ? "amanhã" : `em ${days} dias`;
+  elements.subscriptionNotice.textContent = subscription.plan === "trial"
+    ? `Seu teste grátis termina ${deadline}. Fale com o responsável pela plataforma para escolher um plano.`
+    : `A assinatura da oficina vence ${deadline}. Solicite a renovação para não interromper o acesso.`;
 }
 
 function renderOrganizationBrand() {
@@ -965,7 +991,9 @@ function planLabel(plan) {
 }
 
 function statusLabel(status) {
-  return status === "blocked" ? "Bloqueado" : "Liberado";
+  if (status === "expired") return "Vencido";
+  if (status === "blocked") return "Bloqueado";
+  return "Liberado";
 }
 
 function formatDate(value) {
@@ -998,7 +1026,8 @@ function createOwnerClientCard(user) {
   const info = document.createElement("div");
   info.append(createElement("strong", "", user.organizationName || "Oficina sem nome"));
   info.append(createElement("small", "", `${user.organizationLegalName || user.name} · ${user.email}`));
-  const status = createElement("span", `subscription-chip ${subscription.status === "blocked" ? "is-blocked" : "is-active"}`, statusLabel(subscription.status));
+  const statusClass = subscription.status === "active" ? "is-active" : "is-blocked";
+  const status = createElement("span", `subscription-chip ${statusClass}`, statusLabel(subscription.status));
   header.append(avatar, info, status);
 
   const details = createElement("div", "client-office-details");
@@ -1009,9 +1038,23 @@ function createOwnerClientCard(user) {
     createElement("span", "", `Plano: ${planLabel(subscription.plan)}`),
     createElement("span", "", `Vence em: ${formatDate(subscription.expiresAt)}`),
   );
+  if (subscription.expiringSoon) {
+    const warning = subscription.daysRemaining === 0
+      ? "Vence hoje"
+      : `Faltam ${subscription.daysRemaining} dia${subscription.daysRemaining === 1 ? "" : "s"}`;
+    details.append(createElement("span", "subscription-warning", warning));
+  }
+  if (subscription.retentionUntil) {
+    details.append(createElement("span", "", `Dados protegidos até: ${formatDate(subscription.retentionUntil)}`));
+  }
 
   const actions = createElement("div", "client-office-actions");
-  const releaseButton = createElement("button", "button button-secondary", "Liberar");
+  const planSelect = document.createElement("select");
+  planSelect.className = "subscription-plan-select";
+  planSelect.setAttribute("aria-label", `Plano da oficina ${user.organizationName}`);
+  planSelect.append(new Option("Plano mensal", "monthly"), new Option("Plano anual", "annual"));
+  planSelect.value = subscription.plan === "annual" ? "annual" : "monthly";
+  const releaseButton = createElement("button", "button button-secondary", "Ativar plano");
   const renewButton = createElement("button", "button button-primary", "Renovar");
   const blockButton = createElement("button", "button button-danger", "Bloquear");
   const editButton = createElement("button", "button button-secondary", "Editar gestor");
@@ -1019,11 +1062,17 @@ function createOwnerClientCard(user) {
     button.type = "button";
   });
   editButton.type = "button";
-  releaseButton.addEventListener("click", () => updateOrganizationSubscription(user.organizationId, "activate"));
-  renewButton.addEventListener("click", () => updateOrganizationSubscription(user.organizationId, "renew"));
+  releaseButton.addEventListener("click", () => updateOrganizationSubscription(user.organizationId, "activate", planSelect.value));
+  renewButton.addEventListener("click", () => updateOrganizationSubscription(user.organizationId, "renew", planSelect.value));
   blockButton.addEventListener("click", () => updateOrganizationSubscription(user.organizationId, "block"));
   editButton.addEventListener("click", () => editTeamMember(user));
-  actions.append(editButton, releaseButton, renewButton, blockButton);
+  actions.append(editButton, planSelect, releaseButton, renewButton, blockButton);
+  if (subscription.canDelete) {
+    const deleteButton = createElement("button", "button button-danger", "Excluir dados");
+    deleteButton.type = "button";
+    deleteButton.addEventListener("click", () => deleteOrganization(user));
+    actions.append(deleteButton);
+  }
 
   row.append(header, details, actions);
   return row;
@@ -2099,11 +2148,11 @@ async function approveRegistrationInvite(inviteId, action) {
   }
 }
 
-async function updateOrganizationSubscription(organizationId, action) {
+async function updateOrganizationSubscription(organizationId, action, plan = "") {
   try {
     const data = await api(`/api/organizations/${organizationId}/subscription`, {
       method: "POST",
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action, ...(plan ? { plan } : {}) }),
     });
     state.team = data.users || state.team;
     renderTeam();
@@ -2114,6 +2163,24 @@ async function updateOrganizationSubscription(organizationId, action) {
           ? "Plano renovado."
           : "Oficina liberada.",
     );
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function deleteOrganization(user) {
+  const confirmation = window.prompt(
+    `Esta ação excluirá definitivamente a oficina e seus dados. Digite exatamente "${user.organizationName}" para confirmar:`,
+  );
+  if (confirmation === null) return;
+  try {
+    const data = await api(`/api/organizations/${user.organizationId}`, {
+      method: "DELETE",
+      body: JSON.stringify({ confirmation }),
+    });
+    state.team = data.users || [];
+    renderTeam();
+    showToast("Oficina e dados excluídos.");
   } catch (error) {
     showToast(error.message);
   }
