@@ -83,6 +83,7 @@ Depois que o serviço for criado, abra **Environment** no Render e troque:
 ```text
 OWNER_SETUP_KEY=trocar-este-codigo-no-render
 DEV_SEED_KEY=trocar-este-codigo-no-render
+DEV_SEED_ENABLED=true
 VEHICLE_API_PROVIDER=apibrasil
 VEHICLE_API_URL=https://gateway.apibrasil.io/api/v2/vehicles/dados
 VEHICLE_API_KEY=sua-chave-da-api-brasil
@@ -93,6 +94,9 @@ código será exigido somente para criar o primeiro dono da plataforma.
 
 `DEV_SEED_KEY` protege a rota que recria dados de teste. Use outro código
 secreto ou o mesmo do dono enquanto estiver testando.
+
+`DEV_SEED_ENABLED=true` deixa a rota de teste disponível. Quando iniciar o uso
+com clientes reais, altere para `false`.
 
 `VEHICLE_API_KEY` é a chave da API Brasil usada para pesquisar dados do veículo
 pela placa. Cole apenas no Render, não salve essa chave no GitHub. Pode colar a
@@ -131,6 +135,31 @@ https://minha-oficina.onrender.com/api/dev/seed?key=SEU_CODIGO&reset=1
 
 Use essa rota somente em fase de teste. Em produção, remova ou troque a chave
 antes de entregar para clientes.
+
+### Fixar as notificações
+
+No computador, execute:
+
+```powershell
+npm run generate:vapid
+```
+
+Adicione no Render os dois valores apresentados:
+
+```text
+VAPID_PUBLIC_KEY=valor-gerado
+VAPID_PRIVATE_KEY=valor-gerado
+```
+
+Essas chaves devem ser geradas uma única vez e mantidas em segredo. Elas evitam
+que os celulares percam a compatibilidade com as notificações após reinícios.
+
+### Baixar uma cópia de segurança
+
+No app, abra **Segurança e dados** e clique em **Baixar cópia de segurança**.
+O dono baixa a plataforma completa; cada gestor baixa somente sua oficina.
+Guarde o arquivo em local protegido, pois ele contém dados operacionais e hashes
+de acesso.
 
 ## 5. Usar disco persistente
 

@@ -76,6 +76,7 @@ const elements = {
   teamNavLabel: document.querySelector("#teamNavLabel"),
   attendanceSection: document.querySelector("#attendanceSection"),
   serviceHistorySection: document.querySelector("#serviceHistorySection"),
+  securitySection: document.querySelector("#securitySection"),
   welcomeName: document.querySelector("#welcomeName"),
   totalTools: document.querySelector("#totalTools"),
   totalValue: document.querySelector("#totalValue"),
@@ -123,6 +124,15 @@ const elements = {
   workshopLatitude: document.querySelector("#workshopLatitude"),
   workshopLongitude: document.querySelector("#workshopLongitude"),
   profileSavedMessage: document.querySelector("#profileSavedMessage"),
+  changePasswordForm: document.querySelector("#changePasswordForm"),
+  currentPassword: document.querySelector("#currentPassword"),
+  newPassword: document.querySelector("#newPassword"),
+  confirmNewPassword: document.querySelector("#confirmNewPassword"),
+  passwordSavedMessage: document.querySelector("#passwordSavedMessage"),
+  backupCard: document.querySelector("#backupCard"),
+  backupDescription: document.querySelector("#backupDescription"),
+  backupSavedMessage: document.querySelector("#backupSavedMessage"),
+  downloadBackupButton: document.querySelector("#downloadBackupButton"),
   tvForm: document.querySelector("#tvForm"),
   tvMechanic: document.querySelector("#tvMechanic"),
   tvNotice: document.querySelector("#tvNotice"),
@@ -450,7 +460,7 @@ async function refreshRoleData() {
   const [{ tools, mechanicTools = [] }, { tv }, team, attendance, services] = await Promise.all([
     api("/api/tools"),
     api(tvPath),
-    state.user.role === "manager" ? api("/api/team") : Promise.resolve({ users: [], invites: [] }),
+    ["owner", "manager"].includes(state.user.role) ? api("/api/team") : Promise.resolve({ users: [], invites: [] }),
     api("/api/attendance"),
     api("/api/services"),
   ]);
@@ -764,10 +774,10 @@ function setupRoleUi() {
   document.querySelectorAll("[data-section]").forEach((button) => {
     const section = button.dataset.section;
     const managerSections = role === "manager"
-      ? ["home", "inventory", "profile", "tv", "team"]
-      : ["home", "inventory", "profile", "tv"];
-    const employeeSections = ["inventory", "attendance", "serviceHistory"];
-    const ownerSections = ["team"];
+      ? ["home", "inventory", "profile", "tv", "team", "security"]
+      : ["home", "inventory", "profile", "tv", "security"];
+    const employeeSections = ["inventory", "attendance", "serviceHistory", "security"];
+    const ownerSections = ["team", "security"];
     const visible =
       (role === "owner" && ownerSections.includes(section)) ||
       (isOperationalRole(role) && managerSections.includes(section)) ||
@@ -797,6 +807,10 @@ function setupRoleUi() {
   document.querySelector("#reportButton").hidden = !isOperationalRole(role);
   document.querySelector("#sidebarReportButton").hidden = !isOperationalRole(role);
   document.querySelector(".sidebar-card").hidden = !isOperationalRole(role);
+  elements.backupCard.hidden = !["owner", "manager"].includes(role);
+  elements.backupDescription.textContent = role === "owner"
+    ? "Baixe uma cópia completa das oficinas e configurações da plataforma."
+    : "Baixe uma cópia dos colaboradores, serviços, ferramentas e configurações da sua oficina.";
   updateTeamLayout();
 }
 
@@ -1697,6 +1711,61 @@ async function submitProfile(event) {
   }
 }
 
+async function submitChangePassword(event) {
+  event.preventDefault();
+  elements.passwordSavedMessage.textContent = "";
+  const currentPassword = elements.currentPassword.value;
+  const newPassword = elements.newPassword.value;
+  if (newPassword !== elements.confirmNewPassword.value) {
+    showToast("A confirmação da nova senha não confere.");
+    return;
+  }
+  try {
+    await api("/api/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    elements.changePasswordForm.reset();
+    elements.passwordSavedMessage.textContent = "Senha alterada com sucesso.";
+    showToast("Senha alterada com sucesso.");
+    setTimeout(() => (elements.passwordSavedMessage.textContent = ""), 3000);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function downloadBackup() {
+  elements.downloadBackupButton.disabled = true;
+  elements.backupSavedMessage.textContent = "Preparando arquivo...";
+  try {
+    const response = await fetch("/api/backup/export", { cache: "no-store" });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || "Não foi possível gerar a cópia de segurança.");
+    }
+    const disposition = response.headers.get("content-disposition") || "";
+    const nameMatch = disposition.match(/filename="([^"]+)"/i);
+    const fileName = nameMatch?.[1] || `minha-oficina-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    elements.backupSavedMessage.textContent = "Cópia baixada.";
+    showToast("Cópia de segurança baixada.");
+    setTimeout(() => (elements.backupSavedMessage.textContent = ""), 3000);
+  } catch (error) {
+    elements.backupSavedMessage.textContent = "";
+    showToast(error.message);
+  } finally {
+    elements.downloadBackupButton.disabled = false;
+  }
+}
+
 async function submitTvPanel(event) {
   event.preventDefault();
   state.tv = {
@@ -1859,6 +1928,7 @@ function showSection(sectionName) {
       : "Equipe/Fila",
     attendance: "Início",
     serviceHistory: "Histórico",
+    security: "Segurança e dados",
   };
   elements.homeSection.classList.toggle("active", sectionName === "home");
   elements.inventorySection.classList.toggle("active", sectionName === "inventory");
@@ -1867,6 +1937,7 @@ function showSection(sectionName) {
   elements.teamSection.classList.toggle("active", sectionName === "team");
   elements.attendanceSection.classList.toggle("active", sectionName === "attendance");
   elements.serviceHistorySection.classList.toggle("active", sectionName === "serviceHistory");
+  elements.securitySection.classList.toggle("active", sectionName === "security");
   elements.pageTitle.textContent = titles[sectionName] || "Inventário";
   document.querySelectorAll(".nav-item").forEach((button) => {
     const isActiveTeamMode = sectionName === "team" && button.dataset.section === "team"
@@ -2384,6 +2455,8 @@ elements.toolPhoto.addEventListener("change", async () => {
 });
 elements.toolForm.addEventListener("submit", submitTool);
 elements.profileForm.addEventListener("submit", submitProfile);
+elements.changePasswordForm.addEventListener("submit", submitChangePassword);
+elements.downloadBackupButton.addEventListener("click", downloadBackup);
 elements.tvForm.addEventListener("submit", submitTvPanel);
 elements.teamForm.addEventListener("submit", submitTeam);
 elements.teamFormToggleButton.addEventListener("click", toggleTeamForm);

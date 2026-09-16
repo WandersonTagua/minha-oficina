@@ -22,7 +22,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=28" />
   </head>
   <body class="auth-pending">
     <section class="auth-screen" id="authScreen">
@@ -64,6 +64,7 @@
             </label>
             <p class="form-error" id="loginError"></p>
             <button class="button button-primary auth-submit" type="submit">Entrar na minha conta</button>
+            <p class="legal-links"><a href="/termos" target="_blank">Termos de uso</a><span>•</span><a href="/privacidade" target="_blank">Política de privacidade</a></p>
           </form>
           <form class="auth-form" id="inviteRegisterForm" hidden>
             <div>
@@ -130,6 +131,7 @@
                 <p>A Minha Oficina é uma plataforma de gestão de pátio, fila, serviços e inventário para uso profissional da oficina.</p>
                 <p>Os dados serão tratados para cadastro, autenticação, controle operacional, notificações e suporte, conforme princípios da LGPD.</p>
                 <p>O gestor declara ter autorização para cadastrar dados da empresa e orientar colaboradores sobre o uso correto do sistema.</p>
+                <p><a href="/termos" target="_blank">Ler os termos completos</a> · <a href="/privacidade" target="_blank">Ler a política de privacidade</a></p>
               </details>
             </div>
             <p class="form-error" id="inviteRegisterError"></p>
@@ -181,6 +183,10 @@
           <button class="nav-item" data-section="serviceHistory">
             <span class="nav-icon">▤</span>
             Histórico
+          </button>
+          <button class="nav-item" data-section="security">
+            <span class="nav-icon">◆</span>
+            Segurança e dados
           </button>
         </nav>
 
@@ -529,6 +535,72 @@
           </div>
         </section>
 
+        <section class="page-section" id="securitySection">
+          <div class="profile-layout">
+            <div class="section-intro">
+              <span class="eyebrow">CONTA E PROTEÇÃO</span>
+              <h2>Segurança e dados</h2>
+              <p>Proteja seu acesso e mantenha uma cópia dos dados importantes da operação.</p>
+            </div>
+
+            <div class="security-grid">
+              <form class="profile-form card" id="changePasswordForm">
+                <div class="tv-form-header">
+                  <div>
+                    <h3>Alterar minha senha</h3>
+                    <p>Use pelo menos 8 caracteres e não compartilhe sua senha.</p>
+                  </div>
+                </div>
+                <div class="form-grid">
+                  <label class="field field-wide">
+                    <span>Senha atual</span>
+                    <input id="currentPassword" type="password" autocomplete="current-password" required />
+                  </label>
+                  <label class="field">
+                    <span>Nova senha</span>
+                    <input id="newPassword" type="password" minlength="8" autocomplete="new-password" required />
+                  </label>
+                  <label class="field">
+                    <span>Confirmar nova senha</span>
+                    <input id="confirmNewPassword" type="password" minlength="8" autocomplete="new-password" required />
+                  </label>
+                </div>
+                <div class="form-footer">
+                  <span id="passwordSavedMessage"></span>
+                  <button class="button button-primary" type="submit">Alterar senha</button>
+                </div>
+              </form>
+
+              <article class="profile-form card" id="backupCard">
+                <div class="tv-form-header">
+                  <div>
+                    <h3>Cópia de segurança manual</h3>
+                    <p id="backupDescription">Baixe uma cópia dos dados para guardar em um local seguro.</p>
+                  </div>
+                </div>
+                <p class="security-note">O arquivo contém dados operacionais e credenciais protegidas. Guarde-o com cuidado e não envie por aplicativos de mensagem.</p>
+                <div class="form-footer">
+                  <span id="backupSavedMessage"></span>
+                  <button class="button button-secondary" id="downloadBackupButton" type="button">Baixar cópia de segurança</button>
+                </div>
+              </article>
+
+              <article class="profile-form card legal-card">
+                <div class="tv-form-header">
+                  <div>
+                    <h3>Documentos da plataforma</h3>
+                    <p>Consulte as regras de uso e como os dados são tratados.</p>
+                  </div>
+                </div>
+                <div class="legal-actions">
+                  <a class="button button-secondary" href="/termos" target="_blank">Termos de uso</a>
+                  <a class="button button-secondary" href="/privacidade" target="_blank">Política de privacidade</a>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
         <section class="page-section" id="teamSection">
           <div class="profile-layout">
             <div class="section-intro">
@@ -814,6 +886,6 @@
     </section>
 
     <div class="toast" id="toast" role="status"></div>
-    <script src="/app.js"></script>
+    <script src="/app.js?v=28"></script>
   </body>
 </html>

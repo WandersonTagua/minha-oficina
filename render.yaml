@@ -17,6 +17,8 @@ services:
         sync: false
       - key: DEV_SEED_KEY
         sync: false
+      - key: DEV_SEED_ENABLED
+        value: "true"
       - key: VEHICLE_API_PROVIDER
         value: apibrasil
       - key: VEHICLE_API_URL

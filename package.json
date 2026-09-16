@@ -8,7 +8,9 @@
   },
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check app.js"
+    "check": "node --check server.js && node --check app.js && node --check scripts/generate-vapid-keys.js && node --check test/critical-flows.test.js",
+    "test": "node --test --test-concurrency=1",
+    "generate:vapid": "node scripts/generate-vapid-keys.js"
   },
   "dependencies": {
     "web-push": "^3.6.7"

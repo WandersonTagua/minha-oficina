@@ -38,6 +38,10 @@ No cadastro inicial, informe esse mesmo código no campo **Código do dono**.
 - Botão de tela cheia no painel da TV
 - PWA instalável no celular e computador
 - Cache da interface para abertura básica sem conexão
+- Troca da própria senha e redefinição administrativa pelo gestor
+- Exportação manual de segurança por oficina ou da plataforma
+- Termos de uso e política de privacidade acessíveis no app
+- Testes automáticos dos fluxos críticos
 
 ## Instalar no celular
 
@@ -51,15 +55,17 @@ Quando instalado, o app abre sem a barra normal do navegador.
 
 ## Publicar online com Render
 
-O arquivo `render.yaml` configura um serviço web Node.js com disco persistente.
+O arquivo `render.yaml` configura um serviço web Node.js para testes no plano
+gratuito. Nesse plano, os arquivos são temporários e podem ser apagados em
+reinicializações ou novos deploys.
 
 1. Envie este projeto para um repositório no GitHub.
 2. No Render, escolha **New > Blueprint**.
 3. Conecte o repositório e aplique o Blueprint.
 4. Ao finalizar, o Render fornecerá um endereço HTTPS instalável como PWA.
 
-O plano configurado usa disco persistente, necessário para não perder contas e
-inventários quando o servidor reiniciar.
+Antes do uso com clientes reais, configure disco persistente ou banco de dados
+para não perder contas, serviços, fotos e inventários quando o servidor reiniciar.
 
 Antes de criar o primeiro usuário em produção, altere a variável
 `OWNER_SETUP_KEY` no Render para um código secreto seu. Sem esse código, ninguém
@@ -79,6 +85,41 @@ VEHICLE_API_KEY=sua-chave-da-api-brasil
 Não salve a chave no GitHub. Se a consulta falhar ou a placa não for encontrada,
 o aceite do serviço continua permitindo preenchimento manual.
 
+### Notificações estáveis
+
+Gere um par de chaves uma única vez:
+
+```powershell
+npm run generate:vapid
+```
+
+Cadastre os dois valores apresentados no ambiente do Render:
+
+```text
+VAPID_PUBLIC_KEY=valor-gerado
+VAPID_PRIVATE_KEY=valor-gerado
+```
+
+Não salve a chave privada no GitHub. Sem essas variáveis, o app ainda gera chaves
+temporárias, mas notificações existentes podem parar após uma reinicialização.
+
+### Ambiente de teste
+
+`DEV_SEED_ENABLED=true` mantém a rota de dados de teste disponível. Antes de
+receber clientes reais, altere para `false` no Render. A rota também exige o valor
+de `DEV_SEED_KEY`.
+
+### Testes automáticos
+
+Execute:
+
+```powershell
+npm test
+```
+
+Os testes cobrem proteção da rota de testes, login e permissões, localização,
+fila, despacho, aceite de serviço, troca de senha e exportação de segurança.
+
 ## Próximos passos para produção
 
 - Trocar o modo gratuito por disco persistente ou banco de dados
@@ -88,4 +129,4 @@ o aceite do serviço continua permitindo preenchimento manual.
 - Banco de dados gerenciado, como PostgreSQL
 - Armazenamento de fotos em serviço próprio
 - Backup automático
-- Política de privacidade e termos de uso
+- Revisão jurídica final dos termos de uso e da política de privacidade

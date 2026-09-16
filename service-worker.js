@@ -1,4 +1,4 @@
-const CACHE_NAME = "minha-oficina-shell-v27";
+const CACHE_NAME = "minha-oficina-shell-v28";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -12,6 +12,8 @@ const APP_SHELL = [
   "/icon.svg",
   "/icon-192.png",
   "/icon-512.png",
+  "/termos",
+  "/privacidade",
 ];
 
 self.addEventListener("install", (event) => {

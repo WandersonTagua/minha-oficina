@@ -11,6 +11,8 @@ const dataFile = process.env.DATA_FILE || path.join(root, "data", "store.json");
 const mediaDir = process.env.MEDIA_DIR || path.join(path.dirname(dataFile), "media");
 const ownerSetupKey = String(process.env.OWNER_SETUP_KEY || "").trim();
 const devSeedKey = String(process.env.DEV_SEED_KEY || ownerSetupKey).trim();
+const devSeedEnabledDefault = process.env.NODE_ENV === "production" ? "false" : "true";
+const devSeedEnabled = /^(1|true|yes|on)$/i.test(String(process.env.DEV_SEED_ENABLED || devSeedEnabledDefault).trim());
 const vapidSubject = process.env.VAPID_SUBJECT || "mailto:cgerenciador@gmail.com";
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "";
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || "";
@@ -18,6 +20,7 @@ const vehicleApiProvider = String(process.env.VEHICLE_API_PROVIDER || "").trim()
 const vehicleApiUrl = process.env.VEHICLE_API_URL || "";
 const vehicleApiKey = process.env.VEHICLE_API_KEY || "";
 const vehicleApiType = process.env.VEHICLE_API_TYPE || "";
+const termsVersion = "2026-09-16";
 const sessions = new Map();
 const loginAttempts = new Map();
 
@@ -35,6 +38,10 @@ const staticFiles = new Map([
   ["/icon.svg", "icon.svg"],
   ["/icon-192.png", "icon-192.png"],
   ["/icon-512.png", "icon-512.png"],
+  ["/termos", "terms.html"],
+  ["/termos.html", "terms.html"],
+  ["/privacidade", "privacy.html"],
+  ["/privacidade.html", "privacy.html"],
 ]);
 
 const contentTypes = {
@@ -213,6 +220,42 @@ function writeStore(store) {
   const temporaryFile = `${dataFile}.tmp`;
   fs.writeFileSync(temporaryFile, JSON.stringify(store, null, 2));
   fs.renameSync(temporaryFile, dataFile);
+}
+
+function backupForUser(store, user) {
+  const generatedAt = new Date().toISOString();
+  if (user.role === "owner") {
+    return {
+      metadata: { generatedAt, scope: "platform", version: 1 },
+      data: store,
+    };
+  }
+
+  const organizationId = user.organizationId;
+  const organization = findOrganization(store, organizationId);
+  const services = (store.services || []).filter((service) => service.organizationId === organizationId);
+  const plates = new Set(services.map((service) => normalizePlate(service.plate)).filter(Boolean));
+  return {
+    metadata: {
+      generatedAt,
+      scope: "organization",
+      organizationId,
+      organizationName: organization?.name || "Oficina",
+      version: 1,
+    },
+    data: {
+      users: (store.users || []).filter((item) => item.organizationId === organizationId),
+      organizations: organization ? [organization] : [],
+      registrationInvites: [],
+      attendance: (store.attendance || []).filter((entry) => entry.organizationId === organizationId),
+      services,
+      vehicles: (store.vehicles || []).filter((vehicle) => plates.has(normalizePlate(vehicle.plate))),
+      push: {
+        subscriptions: (store.push?.subscriptions || []).filter((item) => item.organizationId === organizationId),
+      },
+      tv: organization?.tv || store.tv || createEmptyStore().tv,
+    },
+  };
 }
 
 function getVapidKeys(store) {
@@ -483,7 +526,7 @@ function createOrganizationWithPlan(store, name, plan = "monthly", details = {})
     terms: {
       accepted: Boolean(details.termsAccepted),
       acceptedAt: details.termsAccepted ? new Date().toISOString() : "",
-      version: details.termsAccepted ? "2026-06-14" : "",
+      version: details.termsAccepted ? termsVersion : "",
     },
     slug,
     tv: {
@@ -983,6 +1026,12 @@ function clearSession(response, request) {
   );
 }
 
+function invalidateUserSessions(userId, exceptToken = "") {
+  for (const [token, session] of sessions.entries()) {
+    if (session.userId === userId && token !== exceptToken) sessions.delete(token);
+  }
+}
+
 function publicUser(user, store = readStore()) {
   const organization = findOrganization(store, user.organizationId);
   return {
@@ -1049,8 +1098,20 @@ function cleanRegistrationSubmission(body) {
 }
 
 function sendJson(response, status, body) {
-  response.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  response.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
   response.end(JSON.stringify(body));
+}
+
+function sendJsonDownload(response, fileName, body) {
+  response.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Disposition": `attachment; filename="${fileName}"`,
+    "Cache-Control": "no-store",
+  });
+  response.end(JSON.stringify(body, null, 2));
 }
 
 function readJsonBody(request) {
@@ -1115,19 +1176,37 @@ function requireUser(request, response) {
     sendJson(response, 403, { error: "Cadastro da oficina bloqueado. Fale com o gestor do site." });
     return null;
   }
-  return { store, user };
+  return { store, user, session };
+}
+
+function loginAddress(request) {
+  return String(request.headers["x-forwarded-for"] || request.socket.remoteAddress || "unknown")
+    .split(",")[0]
+    .trim();
 }
 
 function isRateLimited(request) {
-  const address = request.socket.remoteAddress || "unknown";
-  const current = loginAttempts.get(address) || { count: 0, startedAt: Date.now() };
+  const current = loginAttempts.get(loginAddress(request));
+  if (!current) return false;
   if (Date.now() - current.startedAt > 15 * 60 * 1000) {
-    loginAttempts.set(address, { count: 1, startedAt: Date.now() });
+    loginAttempts.delete(loginAddress(request));
     return false;
   }
+  return current.count >= 10;
+}
+
+function recordFailedLogin(request) {
+  const address = loginAddress(request);
+  const current = loginAttempts.get(address);
+  if (!current || Date.now() - current.startedAt > 15 * 60 * 1000) {
+    loginAttempts.set(address, { count: 1, startedAt: Date.now() });
+    return;
+  }
   current.count += 1;
-  loginAttempts.set(address, current);
-  return current.count > 30;
+}
+
+function clearLoginAttempts(request) {
+  loginAttempts.delete(loginAddress(request));
 }
 
 function cleanTool(body, existing = {}) {
@@ -1198,6 +1277,10 @@ async function handleApi(request, response, pathname) {
   }
 
   if (["GET", "POST"].includes(request.method) && pathname === "/api/dev/seed") {
+    if (!devSeedEnabled) {
+      sendJson(response, 404, { error: "Ambiente de teste desativado." });
+      return;
+    }
     const body = request.method === "POST" ? await readJsonBody(request) : {};
     const params = new URL(request.url, `http://${request.headers.host}`).searchParams;
     const providedKey = String(request.headers["x-seed-key"] || body.key || params.get("key") || "").trim();
@@ -1280,6 +1363,7 @@ async function handleApi(request, response, pathname) {
     const store = readStore();
     const user = store.users.find((item) => item.email === normalizeEmail(body.email));
     if (!user || !passwordMatches(String(body.password || ""), user)) {
+      recordFailedLogin(request);
       sendJson(response, 401, { error: "E-mail ou senha incorretos." });
       return;
     }
@@ -1292,6 +1376,7 @@ async function handleApi(request, response, pathname) {
       sendJson(response, 403, { error: "Cadastro da oficina bloqueado. Fale com o gestor do site." });
       return;
     }
+    clearLoginAttempts(request);
     createSession(response, user.id, request);
     sendJson(response, 200, { user: publicUser(user, store) });
     return;
@@ -1311,6 +1396,40 @@ async function handleApi(request, response, pathname) {
 
   const context = requireUser(request, response);
   if (!context) return;
+
+  if (request.method === "POST" && pathname === "/api/auth/change-password") {
+    const body = await readJsonBody(request);
+    const currentPassword = String(body.currentPassword || "");
+    const newPassword = String(body.newPassword || "");
+    if (!passwordMatches(currentPassword, context.user)) {
+      sendJson(response, 401, { error: "A senha atual está incorreta." });
+      return;
+    }
+    if (newPassword.length < 8) {
+      sendJson(response, 400, { error: "A nova senha precisa ter pelo menos 8 caracteres." });
+      return;
+    }
+    if (newPassword === currentPassword) {
+      sendJson(response, 400, { error: "Escolha uma senha diferente da senha atual." });
+      return;
+    }
+    setUserPassword(context.user, newPassword);
+    writeStore(context.store);
+    invalidateUserSessions(context.user.id, context.session.token);
+    sendJson(response, 200, { ok: true });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/backup/export") {
+    if (!["owner", "manager"].includes(context.user.role)) {
+      sendJson(response, 403, { error: "Apenas o dono do site ou o gestor pode exportar dados." });
+      return;
+    }
+    const date = new Date().toISOString().slice(0, 10);
+    const scope = context.user.role === "owner" ? "plataforma" : organizationSlug(context.store, context.user.organizationId) || "oficina";
+    sendJsonDownload(response, `minha-oficina-backup-${scope}-${date}.json`, backupForUser(context.store, context.user));
+    return;
+  }
 
   if (request.method === "GET" && pathname === "/api/push/public-key") {
     const keys = configureWebPush(context.store);
@@ -2184,6 +2303,14 @@ function serveStatic(response, pathname) {
 }
 
 const server = http.createServer(async (request, response) => {
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("X-Frame-Options", "DENY");
+  response.setHeader("Referrer-Policy", "same-origin");
+  response.setHeader("Permissions-Policy", "geolocation=(self), camera=(), microphone=()");
+  response.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self'",
+  );
   const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
   try {
     if (pathname.startsWith("/api/")) {
@@ -2201,6 +2328,15 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, host, () => {
-  console.log(`Minha Oficina disponível em http://${host}:${port}`);
-});
+if (require.main === module) {
+  server.listen(port, host, () => {
+    console.log(`Minha Oficina disponível em http://${host}:${port}`);
+  });
+}
+
+module.exports = {
+  server,
+  createEmptyStore,
+  hashPassword,
+  passwordMatches,
+};
