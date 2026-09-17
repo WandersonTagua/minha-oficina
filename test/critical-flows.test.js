@@ -69,6 +69,9 @@ test("fluxos críticos da oficina", async (context) => {
     assert.match(home.body, /armazenados por 60 dias/);
     assert.match(terms.body, /Termos de Uso/);
     assert.match(privacy.body, /Política de Privacidade/);
+    assert.match(terms.body, /Wanderson da Silva Moreira/);
+    assert.match(terms.body, /063\.805\.741-82/);
+    assert.match(privacy.body, /Bahia, CEP 47850-043/);
     assert.equal(terms.response.headers.get("x-frame-options"), "DENY");
     assert.match(terms.response.headers.get("permissions-policy") || "", /geolocation=\(self\)/);
   });
