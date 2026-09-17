@@ -22,6 +22,8 @@ const vehicleApiKey = process.env.VEHICLE_API_KEY || "";
 const vehicleApiType = process.env.VEHICLE_API_TYPE || "";
 const termsVersion = "2026-09-16";
 const subscriptionRetentionDays = 60;
+const registrationInviteLifetimeDays = 7;
+const accessLogRetentionDays = 183;
 const sessions = new Map();
 const loginAttempts = new Map();
 
@@ -63,7 +65,12 @@ function ensureStore() {
   fs.mkdirSync(path.dirname(dataFile), { recursive: true });
   fs.mkdirSync(mediaDir, { recursive: true });
   if (!fs.existsSync(dataFile)) {
-    fs.writeFileSync(dataFile, JSON.stringify(createEmptyStore(), null, 2));
+    fs.writeFileSync(dataFile, JSON.stringify(createEmptyStore(), null, 2), { mode: 0o600 });
+  }
+  try {
+    fs.chmodSync(dataFile, 0o600);
+  } catch {
+    // Alguns sistemas de arquivos não oferecem permissões POSIX.
   }
 }
 
@@ -72,6 +79,8 @@ function createEmptyStore() {
     users: [],
     organizations: [],
     registrationInvites: [],
+    auditLog: [],
+    accessLog: [],
     attendance: [],
     services: [],
     vehicles: [],
@@ -98,6 +107,8 @@ function readStore() {
     store.users ||= [];
     store.organizations ||= [];
     store.registrationInvites ||= [];
+    store.auditLog ||= [];
+    store.accessLog ||= [];
     store.attendance ||= [];
     store.services ||= [];
     store.vehicles ||= [];
@@ -118,7 +129,28 @@ function migrateStore(store) {
   store.push ||= {};
   store.push.subscriptions ||= [];
   store.registrationInvites ||= [];
+  store.auditLog ||= [];
+  store.accessLog ||= [];
   store.vehicles ||= [];
+  const accessLogLimit = Date.now() - accessLogRetentionDays * 86400000;
+  const retainedAccessLog = store.accessLog.filter((entry) => new Date(entry.accessedAt).getTime() >= accessLogLimit);
+  if (retainedAccessLog.length !== store.accessLog.length) {
+    store.accessLog = retainedAccessLog;
+    changed = true;
+  }
+  const inviteExpirationLimit = Date.now() - registrationInviteLifetimeDays * 86400000;
+  store.registrationInvites.forEach((invite) => {
+    if (invite.status === "open" && new Date(invite.createdAt).getTime() < inviteExpirationLimit) {
+      invite.status = "expired";
+      invite.expiredAt = new Date().toISOString();
+      invite.submission = null;
+      changed = true;
+    }
+    if (["approved", "rejected"].includes(invite.status) && invite.submission) {
+      invite.submission = null;
+      changed = true;
+    }
+  });
   if (!vapidPublicKey && !vapidPrivateKey && !store.push.vapid) {
     store.push.vapid = webPush.generateVAPIDKeys();
     changed = true;
@@ -230,20 +262,39 @@ function migrateStore(store) {
 
 function writeStore(store) {
   const temporaryFile = `${dataFile}.tmp`;
-  fs.writeFileSync(temporaryFile, JSON.stringify(store, null, 2));
+  fs.writeFileSync(temporaryFile, JSON.stringify(store, null, 2), { mode: 0o600 });
   fs.renameSync(temporaryFile, dataFile);
 }
 
-function backupForUser(store, user) {
-  const generatedAt = new Date().toISOString();
-  if (user.role === "owner") {
-    return {
-      metadata: { generatedAt, scope: "platform", version: 1 },
-      data: store,
-    };
-  }
+function userForExport(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    organizationId: user.organizationId || "",
+    active: user.active !== false,
+    profile: user.profile || {},
+    tools: user.tools || [],
+    createdAt: user.createdAt,
+  };
+}
 
-  const organizationId = user.organizationId;
+function inviteForExport(invite) {
+  return {
+    id: invite.id,
+    status: invite.status,
+    createdAt: invite.createdAt,
+    submittedAt: invite.submittedAt || "",
+    approvedAt: invite.approvedAt || "",
+    rejectedAt: invite.rejectedAt || "",
+    expiredAt: invite.expiredAt || "",
+    organizationId: invite.organizationId || "",
+    managerId: invite.managerId || "",
+  };
+}
+
+function organizationExport(store, organizationId, generatedAt = new Date().toISOString()) {
   const organization = findOrganization(store, organizationId);
   const services = (store.services || []).filter((service) => service.organizationId === organizationId);
   const plates = new Set(services.map((service) => normalizePlate(service.plate)).filter(Boolean));
@@ -253,21 +304,68 @@ function backupForUser(store, user) {
       scope: "organization",
       organizationId,
       organizationName: organization?.name || "Oficina",
-      version: 1,
+      version: 2,
+      excludesAuthenticationSecrets: true,
     },
     data: {
-      users: (store.users || []).filter((item) => item.organizationId === organizationId),
+      users: (store.users || []).filter((item) => item.organizationId === organizationId).map(userForExport),
       organizations: organization ? [organization] : [],
       registrationInvites: [],
       attendance: (store.attendance || []).filter((entry) => entry.organizationId === organizationId),
       services,
       vehicles: (store.vehicles || []).filter((vehicle) => plates.has(normalizePlate(vehicle.plate))),
-      push: {
-        subscriptions: (store.push?.subscriptions || []).filter((item) => item.organizationId === organizationId),
-      },
       tv: organization?.tv || store.tv || createEmptyStore().tv,
     },
   };
+}
+
+function backupForUser(store, user) {
+  const generatedAt = new Date().toISOString();
+  if (user.role !== "owner") return organizationExport(store, user.organizationId, generatedAt);
+  return {
+    metadata: {
+      generatedAt,
+      scope: "platform",
+      version: 2,
+      excludesAuthenticationSecrets: true,
+    },
+    data: {
+      users: (store.users || []).map(userForExport),
+      organizations: store.organizations || [],
+      registrationInvites: (store.registrationInvites || []).map(inviteForExport),
+      attendance: store.attendance || [],
+      services: store.services || [],
+      vehicles: store.vehicles || [],
+      tv: store.tv || createEmptyStore().tv,
+      auditLog: store.auditLog || [],
+    },
+  };
+}
+
+function recordAudit(store, actor, action, details = {}) {
+  store.auditLog ||= [];
+  store.auditLog.push({
+    id: crypto.randomUUID(),
+    action,
+    actorUserId: actor?.id || "system",
+    actorRole: actor?.role || "system",
+    organizationId: details.organizationId || actor?.organizationId || "",
+    targetId: details.targetId || "",
+    plan: details.plan || "",
+    createdAt: new Date().toISOString(),
+  });
+  if (store.auditLog.length > 5000) store.auditLog = store.auditLog.slice(-5000);
+}
+
+function recordApplicationAccess(store, user, request) {
+  store.accessLog ||= [];
+  store.accessLog.push({
+    id: crypto.randomUUID(),
+    userId: user.id,
+    organizationId: user.organizationId || "",
+    ipAddress: loginAddress(request),
+    accessedAt: new Date().toISOString(),
+  });
 }
 
 function getVapidKeys(store) {
@@ -570,8 +668,8 @@ function createOrganizationWithPlan(store, name, plan = "monthly", details = {})
     logo: sanitizeImageDataUrl(details.logo),
     terms: {
       accepted: Boolean(details.termsAccepted),
-      acceptedAt: details.termsAccepted ? new Date().toISOString() : "",
-      version: details.termsAccepted ? termsVersion : "",
+      acceptedAt: details.termsAccepted ? details.termsAcceptedAt || new Date().toISOString() : "",
+      version: details.termsAccepted ? details.termsVersion || termsVersion : "",
     },
     slug,
     tv: {
@@ -1159,6 +1257,8 @@ function cleanRegistrationSubmission(body) {
     organizationState: sanitizeText(body.organizationState, 2).toLocaleUpperCase("pt-BR"),
     organizationLogo: sanitizeImageDataUrl(body.organizationLogo),
     organizationTermsAccepted: Boolean(body.organizationTermsAccepted),
+    organizationTermsAcceptedAt: body.organizationTermsAccepted ? new Date().toISOString() : "",
+    organizationTermsVersion: body.organizationTermsAccepted ? termsVersion : "",
   };
 }
 
@@ -1448,6 +1548,8 @@ async function handleApi(request, response, pathname) {
       return;
     }
     clearLoginAttempts(request);
+    recordApplicationAccess(store, user, request);
+    writeStore(store);
     createSession(response, user.id, request);
     sendJson(response, 200, { user: publicUser(user, store) });
     return;
@@ -1498,6 +1600,8 @@ async function handleApi(request, response, pathname) {
     }
     const date = new Date().toISOString().slice(0, 10);
     const scope = context.user.role === "owner" ? "plataforma" : organizationSlug(context.store, context.user.organizationId) || "oficina";
+    recordAudit(context.store, context.user, "data.exported", { organizationId: context.user.organizationId });
+    writeStore(context.store);
     sendJsonDownload(response, `minha-oficina-backup-${scope}-${date}.json`, backupForUser(context.store, context.user));
     return;
   }
@@ -1674,6 +1778,8 @@ async function handleApi(request, response, pathname) {
     if (action === "reject") {
       invite.status = "rejected";
       invite.rejectedAt = new Date().toISOString();
+      invite.submission = null;
+      recordAudit(context.store, context.user, "registration.rejected", { targetId: invite.id });
       writeStore(context.store);
       const users = context.store.users.filter((user) => user.role === "manager").map((user) => publicTeamUser(user, context.store));
       sendJson(response, 200, { users, invites: context.store.registrationInvites.map(publicRegistrationInvite) });
@@ -1699,6 +1805,8 @@ async function handleApi(request, response, pathname) {
       state: submission.organizationState,
       logo: submission.organizationLogo,
       termsAccepted: true,
+      termsAcceptedAt: submission.organizationTermsAcceptedAt,
+      termsVersion: submission.organizationTermsVersion,
     });
     const user = createUserWithPasswordData({
       name: submission.managerName,
@@ -1713,6 +1821,12 @@ async function handleApi(request, response, pathname) {
     invite.approvedAt = new Date().toISOString();
     invite.organizationId = organization.id;
     invite.managerId = user.id;
+    invite.submission = null;
+    recordAudit(context.store, context.user, "registration.approved", {
+      organizationId: organization.id,
+      targetId: user.id,
+      plan,
+    });
     writeStore(context.store);
     const users = context.store.users.filter((item) => item.role === "manager").map((item) => publicTeamUser(item, context.store));
     sendJson(response, 200, { users, invites: context.store.registrationInvites.map(publicRegistrationInvite) });
@@ -1858,11 +1972,41 @@ async function handleApi(request, response, pathname) {
       delete organization.subscription.retentionUntil;
     }
     organization.subscription.updatedAt = now.toISOString();
+    recordAudit(context.store, context.user, `subscription.${action}`, {
+      organizationId: organization.id,
+      targetId: organization.id,
+      plan: organization.subscription.plan,
+    });
     writeStore(context.store);
     const users = context.store.users
       .filter((user) => user.role === "manager")
       .map((user) => publicTeamUser(user, context.store));
     sendJson(response, 200, { organization, users });
+    return;
+  }
+
+  const organizationExportMatch = pathname.match(/^\/api\/organizations\/([^/]+)\/export$/);
+  if (request.method === "GET" && organizationExportMatch) {
+    if (context.user.role !== "owner") {
+      sendJson(response, 403, { error: "Apenas o dono do site pode exportar os dados desta oficina." });
+      return;
+    }
+    const organization = findOrganization(context.store, organizationExportMatch[1]);
+    if (!organization) {
+      sendJson(response, 404, { error: "Oficina não encontrada." });
+      return;
+    }
+    recordAudit(context.store, context.user, "data.exported", {
+      organizationId: organization.id,
+      targetId: organization.id,
+    });
+    writeStore(context.store);
+    const date = new Date().toISOString().slice(0, 10);
+    sendJsonDownload(
+      response,
+      `minha-oficina-dados-${organization.slug}-${date}.json`,
+      organizationExport(context.store, organization.id),
+    );
     return;
   }
 
@@ -1905,6 +2049,10 @@ async function handleApi(request, response, pathname) {
     );
 
     invalidateOrganizationSessions(context.store, organizationId);
+    recordAudit(context.store, context.user, "organization.deleted", {
+      organizationId,
+      targetId: organizationId,
+    });
     context.store.organizations = context.store.organizations.filter((item) => item.id !== organizationId);
     context.store.users = context.store.users.filter((user) => user.organizationId !== organizationId);
     context.store.attendance = (context.store.attendance || []).filter((entry) => entry.organizationId !== organizationId);
@@ -2323,7 +2471,7 @@ async function handleApi(request, response, pathname) {
     const id = crypto.randomUUID();
     const fileName = `${id}${extension}`;
     const filePath = path.join(mediaDir, fileName);
-    fs.writeFileSync(filePath, await readBinaryBody(request));
+    fs.writeFileSync(filePath, await readBinaryBody(request), { mode: 0o600 });
     const media = {
       id,
       type: "video",
@@ -2468,6 +2616,9 @@ const server = http.createServer(async (request, response) => {
   response.setHeader("X-Frame-Options", "DENY");
   response.setHeader("Referrer-Policy", "same-origin");
   response.setHeader("Permissions-Policy", "geolocation=(self), camera=(), microphone=()");
+  if (request.headers["x-forwarded-proto"] === "https") {
+    response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
   response.setHeader(
     "Content-Security-Policy",
     "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self'",

@@ -1058,15 +1058,18 @@ function createOwnerClientCard(user) {
   const renewButton = createElement("button", "button button-primary", "Renovar");
   const blockButton = createElement("button", "button button-danger", "Bloquear");
   const editButton = createElement("button", "button button-secondary", "Editar gestor");
+  const exportButton = createElement("button", "button button-secondary", "Exportar dados");
   [releaseButton, renewButton, blockButton].forEach((button) => {
     button.type = "button";
   });
   editButton.type = "button";
+  exportButton.type = "button";
   releaseButton.addEventListener("click", () => updateOrganizationSubscription(user.organizationId, "activate", planSelect.value));
   renewButton.addEventListener("click", () => updateOrganizationSubscription(user.organizationId, "renew", planSelect.value));
   blockButton.addEventListener("click", () => updateOrganizationSubscription(user.organizationId, "block"));
   editButton.addEventListener("click", () => editTeamMember(user));
-  actions.append(editButton, planSelect, releaseButton, renewButton, blockButton);
+  exportButton.addEventListener("click", () => exportOrganization(user, exportButton));
+  actions.append(editButton, exportButton, planSelect, releaseButton, renewButton, blockButton);
   if (subscription.canDelete) {
     const deleteButton = createElement("button", "button button-danger", "Excluir dados");
     deleteButton.type = "button";
@@ -1783,18 +1786,15 @@ async function submitChangePassword(event) {
   }
 }
 
-async function downloadBackup() {
-  elements.downloadBackupButton.disabled = true;
-  elements.backupSavedMessage.textContent = "Preparando arquivo...";
-  try {
-    const response = await fetch("/api/backup/export", { cache: "no-store" });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body.error || "Não foi possível gerar a cópia de segurança.");
-    }
+async function downloadJsonExport(path, fallbackName) {
+  const response = await fetch(path, { cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || "Não foi possível gerar a cópia dos dados.");
+  }
     const disposition = response.headers.get("content-disposition") || "";
     const nameMatch = disposition.match(/filename="([^"]+)"/i);
-    const fileName = nameMatch?.[1] || `minha-oficina-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const fileName = nameMatch?.[1] || fallbackName;
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -1804,6 +1804,16 @@ async function downloadBackup() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+}
+
+async function downloadBackup() {
+  elements.downloadBackupButton.disabled = true;
+  elements.backupSavedMessage.textContent = "Preparando arquivo...";
+  try {
+    await downloadJsonExport(
+      "/api/backup/export",
+      `minha-oficina-backup-${new Date().toISOString().slice(0, 10)}.json`,
+    );
     elements.backupSavedMessage.textContent = "Cópia baixada.";
     showToast("Cópia de segurança baixada.");
     setTimeout(() => (elements.backupSavedMessage.textContent = ""), 3000);
@@ -1812,6 +1822,21 @@ async function downloadBackup() {
     showToast(error.message);
   } finally {
     elements.downloadBackupButton.disabled = false;
+  }
+}
+
+async function exportOrganization(user, button) {
+  button.disabled = true;
+  try {
+    await downloadJsonExport(
+      `/api/organizations/${user.organizationId}/export`,
+      `minha-oficina-dados-${new Date().toISOString().slice(0, 10)}.json`,
+    );
+    showToast(`Dados de ${user.organizationName} exportados.`);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    button.disabled = false;
   }
 }
 

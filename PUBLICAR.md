@@ -158,8 +158,19 @@ que os celulares percam a compatibilidade com as notificações após reinícios
 
 No app, abra **Segurança e dados** e clique em **Baixar cópia de segurança**.
 O dono baixa a plataforma completa; cada gestor baixa somente sua oficina.
-Guarde o arquivo em local protegido, pois ele contém dados operacionais e hashes
-de acesso.
+Guarde o arquivo em local protegido, pois ele contém dados pessoais e operacionais.
+Hashes de senha, chaves privadas e assinaturas de notificação não são incluídos.
+
+## Checklist obrigatório antes de receber clientes reais
+
+1. Alterar `DEV_SEED_ENABLED` para `false` no Render.
+2. Trocar `DEV_SEED_KEY` e `OWNER_SETUP_KEY` se alguma delas tiver sido exibida ou compartilhada.
+3. Contratar armazenamento persistente e configurar `DATA_FILE` e `MEDIA_DIR` no disco.
+4. Testar restauração e manter cópias de segurança protegidas, com acesso limitado.
+5. Informar nos Termos e na Política de Privacidade o nome ou razão social, CPF/CNPJ e contato do fornecedor.
+6. Definir preço, renovação, cancelamento, suporte e prazo de disponibilidade de cada plano.
+7. Manter um procedimento para solicitações de acesso, correção, exportação e exclusão de dados.
+8. Manter um procedimento de resposta a incidentes de segurança e comunicação aos afetados.
 
 ## 5. Usar disco persistente
 

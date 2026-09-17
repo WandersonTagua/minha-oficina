@@ -94,6 +94,29 @@ test("fluxos críticos da oficina", async (context) => {
   let mechanicId = "";
 
   await context.test("dono visualiza clientes e exporta a plataforma completa", async () => {
+    const beforeOwnerLogin = JSON.parse(fs.readFileSync(process.env.DATA_FILE, "utf8"));
+    beforeOwnerLogin.accessLog.push({
+      id: "old-access-log",
+      userId: "old-user",
+      organizationId: "",
+      ipAddress: "127.0.0.1",
+      accessedAt: "2020-01-01T00:00:00.000Z",
+    });
+    beforeOwnerLogin.registrationInvites.push({
+      id: "old-invite",
+      token: "old-token",
+      status: "open",
+      createdAt: "2020-01-01T00:00:00.000Z",
+      submission: null,
+    });
+    beforeOwnerLogin.registrationInvites.push({
+      id: "approved-invite",
+      token: "used-token",
+      status: "approved",
+      createdAt: "2020-01-01T00:00:00.000Z",
+      submission: { passwordData: { salt: "secret", hash: "secret" } },
+    });
+    fs.writeFileSync(process.env.DATA_FILE, JSON.stringify(beforeOwnerLogin, null, 2));
     const ownerLogin = await login(baseUrl, "dono@minhaoficina.teste", "12345678");
     ownerCookie = ownerLogin.cookie;
     const team = await request(baseUrl, "/api/team", { cookie: ownerLogin.cookie });
@@ -105,6 +128,23 @@ test("fluxos críticos da oficina", async (context) => {
     const backup = await request(baseUrl, "/api/backup/export", { cookie: ownerLogin.cookie });
     assert.equal(backup.response.status, 200);
     assert.equal(backup.body.metadata.scope, "platform");
+    assert.equal(backup.body.metadata.excludesAuthenticationSecrets, true);
+    assert.doesNotMatch(JSON.stringify(backup.body), /passwordHash|passwordSalt|privateKey|p256dh/);
+    assert.equal(backup.body.data.accessLog, undefined);
+    assert.ok(backup.body.data.auditLog.some((entry) => entry.action === "data.exported"));
+    const storedData = JSON.parse(fs.readFileSync(process.env.DATA_FILE, "utf8"));
+    assert.ok(storedData.accessLog.some((entry) => entry.userId && entry.ipAddress && entry.accessedAt));
+    assert.ok(!storedData.accessLog.some((entry) => entry.id === "old-access-log"));
+    assert.equal(storedData.registrationInvites.find((invite) => invite.id === "old-invite").status, "expired");
+    assert.equal(storedData.registrationInvites.find((invite) => invite.id === "approved-invite").submission, null);
+
+    const organizationExport = await request(baseUrl, `/api/organizations/${organizationId}/export`, {
+      cookie: ownerLogin.cookie,
+    });
+    assert.equal(organizationExport.response.status, 200);
+    assert.equal(organizationExport.body.metadata.scope, "organization");
+    assert.equal(organizationExport.body.data.organizations.length, 1);
+    assert.doesNotMatch(JSON.stringify(organizationExport.body), /passwordHash|passwordSalt|privateKey|p256dh/);
   });
 
   await context.test("teste vencido bloqueia acesso e pode ser convertido para plano anual", async () => {
@@ -247,7 +287,9 @@ test("fluxos críticos da oficina", async (context) => {
     assert.equal(backup.response.status, 200);
     assert.match(backup.response.headers.get("content-disposition") || "", /attachment/);
     assert.equal(backup.body.metadata.scope, "organization");
+    assert.equal(backup.body.metadata.excludesAuthenticationSecrets, true);
     assert.equal(backup.body.data.organizations.length, 1);
     assert.ok(backup.body.data.services.some((service) => service.id === serviceId));
+    assert.doesNotMatch(JSON.stringify(backup.body), /passwordHash|passwordSalt|privateKey|p256dh/);
   });
 });
