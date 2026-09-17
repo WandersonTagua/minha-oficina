@@ -1440,7 +1440,12 @@ async function handleApi(request, response, pathname) {
       tv.mechanic = queue[0]?.name || tv.mechanic;
       tv.queue = queue.slice(1).map((entry) => entry.name);
     }
-    sendJson(response, 200, { tv });
+    sendJson(response, 200, {
+      tv,
+      organization: organization
+        ? { name: organization.name || "Minha Oficina", logo: organization.logo || "" }
+        : { name: "Minha Oficina", logo: "" },
+    });
     return;
   }
 

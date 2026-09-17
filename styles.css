@@ -690,6 +690,23 @@ select {
   transform: rotate(-17deg) translate(6px, 4px);
 }
 
+.banner-symbol.has-logo {
+  padding: 12px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.94);
+  filter: none;
+  opacity: 1;
+  transform: none;
+}
+
+.banner-symbol.has-logo img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

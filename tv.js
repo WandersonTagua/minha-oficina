@@ -13,7 +13,31 @@ const tvElements = {
   noticeText: document.querySelector("#noticeText"),
   highlightCard: document.querySelector("#highlightCard"),
   fullscreenButton: document.querySelector("#fullscreenButton"),
+  brandMarks: [...document.querySelectorAll("[data-tv-brand-mark]")],
+  organizationNames: [...document.querySelectorAll("[data-tv-organization-name]")],
 };
+
+function renderOrganizationBrand(organization = {}) {
+  const name = organization.name || "Minha Oficina";
+  const logo = organization.logo || "";
+  tvElements.organizationNames.forEach((element) => {
+    element.textContent = name;
+  });
+  tvElements.brandMarks.forEach((mark) => {
+    mark.classList.toggle("has-logo", Boolean(logo));
+    mark.replaceChildren();
+    if (!logo) {
+      const fallback = document.createElement("span");
+      fallback.textContent = "MO";
+      mark.append(fallback);
+      return;
+    }
+    const image = document.createElement("img");
+    image.src = logo;
+    image.alt = `Logo ${name}`;
+    mark.append(image);
+  });
+}
 
 function toDisplayName(value) {
   return String(value || "")
@@ -126,10 +150,11 @@ function advanceMedia(delay) {
 async function loadTvSettings() {
   try {
     const response = await fetch(`/api/tv${window.location.search}`, { cache: "no-store" });
-    const { tv } = await response.json();
+    const { tv, organization } = await response.json();
     const previousPlaylist = JSON.stringify(tvState.settings?.playlist || []);
     const nextPlaylist = JSON.stringify(tv.playlist || []);
     tvState.settings = tv;
+    renderOrganizationBrand(organization);
     renderText(tv);
     if (previousPlaylist !== nextPlaylist) {
       tvState.playlistIndex = 0;

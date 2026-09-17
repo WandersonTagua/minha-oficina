@@ -67,6 +67,7 @@ test("fluxos críticos da oficina", async (context) => {
     assert.equal(privacy.response.status, 200);
     assert.match(home.body, /Teste grátis por 7 dias/);
     assert.match(home.body, /armazenados por 60 dias/);
+    assert.match(home.body, /data-organization-logo/);
     assert.match(terms.body, /Termos de Uso/);
     assert.match(privacy.body, /Política de Privacidade/);
     assert.match(terms.body, /Wanderson da Silva Moreira/);
@@ -95,6 +96,13 @@ test("fluxos críticos da oficina", async (context) => {
   let ownerCookie = "";
   let organizationId = "";
   let mechanicId = "";
+
+  await context.test("painel da TV recebe a identidade pública da oficina", async () => {
+    const panel = await request(baseUrl, "/api/tv?org=oficina-teste");
+    assert.equal(panel.response.status, 200);
+    assert.equal(panel.body.organization.name, "Oficina Teste");
+    assert.equal(panel.body.organization.logo, "");
+  });
 
   await context.test("dono visualiza clientes e exporta a plataforma completa", async () => {
     const beforeOwnerLogin = JSON.parse(fs.readFileSync(process.env.DATA_FILE, "utf8"));

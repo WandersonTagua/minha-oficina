@@ -311,6 +311,19 @@ function renderOrganizationBrand() {
       mark.append(createElement("span", "", "MO"));
     }
   });
+
+  document.querySelectorAll("[data-organization-logo]").forEach((slot) => {
+    slot.classList.toggle("has-logo", Boolean(logo));
+    slot.replaceChildren();
+    if (logo) {
+      const image = document.createElement("img");
+      image.src = logo;
+      image.alt = state.user?.organizationName || "Logotipo da oficina";
+      slot.append(image);
+    } else {
+      slot.textContent = slot.dataset.logoFallback || "MO";
+    }
+  });
 }
 
 function supportsPushNotifications() {

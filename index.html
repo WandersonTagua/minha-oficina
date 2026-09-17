@@ -22,7 +22,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=28" />
+    <link rel="stylesheet" href="/styles.css?v=33" />
   </head>
   <body class="auth-pending">
     <section class="auth-screen" id="authScreen">
@@ -250,7 +250,7 @@
                 <h2>Bem-vindo</h2>
                 <p>Acompanhe o serviço.</p>
               </div>
-              <div class="banner-symbol" aria-hidden="true">OS</div>
+              <div class="banner-symbol" data-organization-logo data-logo-fallback="OS" aria-hidden="true">OS</div>
             </div>
 
             <div class="dispatch-grid">
@@ -328,7 +328,7 @@
               <h2>Olá, <span id="welcomeName">mecânico</span>.</h2>
               <p>Organize, encontre e comprove todas as ferramentas da sua oficina.</p>
             </div>
-            <div class="banner-symbol" aria-hidden="true">🔧</div>
+            <div class="banner-symbol" data-organization-logo data-logo-fallback="🔧" aria-hidden="true">🔧</div>
           </div>
 
           <div class="stats-grid">
@@ -899,6 +899,6 @@
     </section>
 
     <div class="toast" id="toast" role="status"></div>
-    <script src="/app.js?v=28"></script>
+    <script src="/app.js?v=33"></script>
   </body>
 </html>
